@@ -30,6 +30,7 @@ object "Token" {
                 returnUint(balanceOf(decodeAsAddress(0), decodeAsUint(1)))
             } 
             case 0x4e1273f4 /* "balanceOfBatch(address[],uint256[])" */ {
+                enforceNonPayable()
                 // temp for now, should return an array of balances
                 returnUint(balanceOfBatch(decodeAsArray(0), decodeAsArray(1)))
             }
@@ -158,15 +159,19 @@ object "Token" {
             function balanceOfBatch(accountsLengthMemPos, idsLengthMemPos) -> balances {
                 /* parameters passed in are the pos
                 ...of the arrays as memory is laid out end to end
-                to read each individual element you move the memoryPtr by 32 bytes
+                to read each individual element you move the lengthmemoryPtr + 32 -> by 32 bytes
                 as many times as there are elements in the array 
+
+                first 32 bytes from memPointers have the length of the array (hence the + 32)
                 */
 
-                // require(accounts.length == ids.length, "ERC1155: accounts and ids length mismatch");
-                
+                // check if arrays are same length
+                compareArrayLengths(accountsLengthMemPos, idsLengthMemPos)
+
+                // initalize an array in memory at the free memory pointer
 
 
-                acc := accountsLengthMemPos
+                balances := accountsLengthMemPos
             }
 
             function _operatorApprovalsAccess(account, operator) -> approvalBool {
@@ -404,8 +409,12 @@ object "Token" {
                 require(lt(data, 2))
             }
 
-            function compareArrayLengths(ids, amounts) {
+            function compareArrayLengths(arr1, arr2) {
                 //require(ids.length == amounts.length, "ERC1155: ids and amounts length mismatch
+                let data1 := mload(arr1)
+                let data2 := mload(arr2)
+
+                require(eq(data1, data2))
             }
         }
     }
