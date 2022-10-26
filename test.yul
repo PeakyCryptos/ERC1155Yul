@@ -9,7 +9,7 @@ object "Token" {
 
         // Store minMint amount in slot two
         // 10 mints of an id at once
-        sstore(1, 10)
+        sstore(2, 10)
 
         // store the uri string
 
@@ -28,9 +28,10 @@ object "Token" {
             case 0xd330b578 /* "balanceOf(address, uint256)" */ {
                 enforceNonPayable()
                 returnUint(balanceOf(decodeAsAddress(0), decodeAsUint(1)))
-            }
+            } 
             case 0x4e1273f4 /* "balanceOfBatch(address[],uint256[])" */ {
-
+                // temp for now, should return an array of balances
+                returnUint(balanceOfBatch(decodeAsArray(0), decodeAsArray(1)))
             }
             case 0xe985e9c5 /* "isApprovedForAll(address,address)" */ {
                 enforceNonPayable()
@@ -126,8 +127,6 @@ object "Token" {
             // comment these out **************
 
             /* -------- storage access functions ---------- */
-            // works successfully
-            //calls into low-level mint
             function _mint(to, id, amount /*, data*/) {
                 // check if they passed in 0.001 ether
                 // and max 1 mint at a time
@@ -156,12 +155,18 @@ object "Token" {
                 bal := sload(balancesStorageOffset(account, id))
             }
 
-            function balanceOfBatch(accounts, ids) -> bal {
-                // parameters passed in are the pos
-                //...of the arrays as memory is laid out end to end
-                // to read each individual element you move the memoryptr by 32 bytes
-                // as many times as there are elements in the array mload(accounts) || mload(ids)
+            function balanceOfBatch(accountsLengthMemPos, idsLengthMemPos) -> balances {
+                /* parameters passed in are the pos
+                ...of the arrays as memory is laid out end to end
+                to read each individual element you move the memoryPtr by 32 bytes
+                as many times as there are elements in the array 
+                */
 
+                // require(accounts.length == ids.length, "ERC1155: accounts and ids length mismatch");
+                
+
+
+                acc := accountsLengthMemPos
             }
 
             function _operatorApprovalsAccess(account, operator) -> approvalBool {
@@ -225,18 +230,55 @@ object "Token" {
             }
             */
 
-            function decodeAsArray(offset) -> {
+            function decodeAsArray(offset) -> arrLengthMemPos {
                 /* offset passed in is the location to start reading the following 32 bytes
-                   that hold the length of the array (how many increments of 0x20 to read from)
+                   that holds the length of the array (how many increments of 0x20 to read from)
 
                    because there are multiple arrays loaded in certain ERC1155 functions
                    we must ensure there is no memory being overwritten
                    meaning we have to keep track of the memory pointer of where to start
                    reading the data into the memory from the calldata
 
-                   i.e if length = 4
+                   As we will put into memory the full array data including length as first 32 bytes
+                   the function will recieve the pointer to memory where the length porition starts
+                */
 
-                */           
+                // calldata offset position
+                let arrOffsetPos := add(4, mul(offset, 0x20))
+
+                // read calldata to get where the arr length portion starts
+                // add 4 as we must account for the function selector
+                let arrLengthPos := add(calldataload(arrOffsetPos), 4)
+
+                // full array length data (including the length as the first element)
+                let arrLengthData := add(calldataload(arrLengthPos), 1)
+
+                // if array length is 0 revert
+                if eq(arrLengthData, 1) {
+                    revert(0,0)
+                }
+
+                // full byte size of array including length portion
+                let fullArrDataSize := mul(arrLengthData, 0x20)
+
+                // ensure this is a valid array (length portion matches the remaining data portion)
+                // the length * 0x20  (how many 32 bytes lengths it takes up)   
+                // calldatasize = arrLengthPos + fullArrDataSize        
+                if lt(calldatasize(), add(arrLengthPos, fullArrDataSize)) {
+                    revert(0, 0)
+                }
+
+                // This is returned to the calling function at the end of function execution
+                // holds in memory where to start copying the full array
+                // first 32 bytes will hold the length porition of the array
+                arrLengthMemPos := getFMP()
+                
+                // copy to memory (starting at where the free memory pointer is)
+                // copies the full array including the length)
+                calldatacopy(arrLengthMemPos, arrLengthPos, fullArrDataSize)
+
+                // increment the FMP by the full arr size
+                incrementFMP(fullArrDataSize)
             }
 
             /* ---------- calldata encoding functions ---------- */
@@ -333,12 +375,12 @@ object "Token" {
 
             // get current free memory pointer location
             function getFMP() -> fmp {
-                fmp := mload(0x40, 0x60)
+                fmp := mload(0x40)
             }
 
-            // increment free memory pointer by 32 bytes
-            incrementFMP() {
-                mstore(0x40, add(getFMP(), 0x20))
+            // increment free memory pointer by specified amount
+            function incrementFMP(amount) {
+                mstore(0x40, add(getFMP(), amount))
             }
 
             // check if ether was sent
@@ -348,10 +390,12 @@ object "Token" {
 
             // checks minMint values and amount per transaction
             function equalsMinMint(amount) {
-                // must equal contructor specified max mint amount 
-                require(eq(minMintAmt(), amount))
-                // must equal constructor specified max mint value
-                require(eq(minMintVal(), callvalue()))
+                // must be less than or equal to contructor specified max mint amount
+                // (maximum tokens you can mint in one transaction) 
+                require(lte(amount, minMintAmt()))
+                // must equal constructor specified max mint value * amount minting
+                // (value passed in must be correct for the amount you are minting)
+                require(eq(mul(minMintVal(), amount), callvalue()))
             }
 
             // check if valid bool
