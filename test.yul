@@ -19,7 +19,7 @@ object "Token" {
     }
     object "runtime" {
         code {
-            // initalize memory pointer 0x80 and 0x40
+            // initalize memory pointer 0x80 at 0x40
             mstore(0x40, 0x80)
 
             // Dispatcher
@@ -42,13 +42,11 @@ object "Token" {
                 // _setApprovalForAll(_msgSender(), operator, approved)
                 _setApprovalForAll(caller(), decodeAsAddress(0), decodeAsBool(1))
             }
-            case 0x156e29f6 /* "mint(address,uint256,uint256)" */ {                
-                // call low-level mint
-                _mint(decodeAsAddress(0), decodeAsUint(1), decodeAsUint(2)/*, decodeAsBytes(3)*/)
-                
-                // on success
-                returnTrue()
+            case 0x0febdd49 /* "safeTransferFrom(address,address,uint256,uint256)" ignoring bytes for now*/ {                
+                // call low-level function
+                _safeTransferFrom(decodeAsAddress(0), decodeAsAddress(1), decodeAsUint(2), decodeAsUint(3)/*, decodeAsBytes(3)*/)
             }
+
             // add case for return uri(tokenID)
 
 
@@ -70,7 +68,7 @@ object "Token" {
             // mapping(uint256 => mapping(address => uint256)) private _balances;
 			// keccak256(abi.encode(address, keccak256(abi.encode(ID_uint, uint256(IDslotHash)))));
             function balancesStorageOffset(account, id) -> offset {	
-                // no need to keep track of FMP as we only use scratch space and 0 slot
+                // no need to keep track of FMP as we only use scratch space
 
 				// nested mapping
                 mstore(0x00, account)
@@ -86,7 +84,7 @@ object "Token" {
 			}
 
 			function operatorApprovalsStorageOffset(account, operator) -> offset {
-                // no need to keep track of FMP as we only use scratch space and 0 slot
+                // no need to keep track of FMP as we only use scratch space
 
 				// nested mapping
                 mstore(0x00, account)
@@ -140,6 +138,7 @@ object "Token" {
                 // emit TransferSingle(operator, address(0), to, id, amount);
 
                 // _doSafeTransferAcceptanceCheck(operator, address(0), to, id, amount, data);
+
             }
 
             function uri(id) {
@@ -219,6 +218,39 @@ object "Token" {
                 sstore(operatorApprovalsStorageOffset(owner, operator), approved)
 
                 // emit ApprovalForAll(owner, operator, approved);
+            }
+
+            // _safeTransferFrom(from, to, id, amount, data);
+            function _safeTransferFrom(from, to, id, amount /*, data*/) {
+                // require from is msg.sender or isApprovedForAll(from, msg.sender)
+                // continue with execution if no revert occurs
+                validInitiator(from)
+
+                // uint256 fromBalance = _balances[id][from];
+                let fromBalance := balanceOf(from, id)
+                
+                // require(fromBalance >= amount)
+                require(gte(fromBalance, amount))
+
+                // _balances[id][from] = fromBalance - amount;
+                deductFromBalance(from, id, amount)
+                
+                // _balances[id][to] += amount;
+                addToBalance(to, id, amount)
+
+                // emit TransferSingle(operator, from, to, id, amount);
+
+                // _doSafeTransferAcceptanceCheck(operator, from, to, id, amount, data);
+            }
+
+            function _safeBatchTransferFrom(from, to, ids, amounts /*, data*/) {
+                // require from is msg.sender or isApprovedForAll(from, msg.sender)
+                // continue with execution if no revert occurs
+                validInitiator(from)  
+
+                //_afterTokenTransfer(operator, from, to, ids, amounts, data);
+
+                //_doSafeBatchTransferAcceptanceCheck(operator, from, to, ids, amounts, data);
             }
 
             /* ---------- calldata decoding functions ----------- */
@@ -399,6 +431,17 @@ object "Token" {
 
                 // update balance at storage location
                 sstore(offset, sub(bal, amount))
+            }
+
+            function validInitiator(from) {
+                // from == _msgSender() || isApprovedForAll(from, _msgSender())
+                // if acc from is not the msg.sender and the msg.sender is not
+                // ...approved for the account token is coming out of then revert
+                if not(eq(caller(), from)) {
+                    if not(_operatorApprovalsAccess(from, caller())) {
+                        revert(0,0)
+                    } 
+                }
             }
 
             /* ---------- utility functions ---------- */
