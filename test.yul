@@ -37,7 +37,7 @@ object "Token" {
                 enforceNonPayable()
                 returnBool(_operatorApprovalsAccess(decodeAsAddress(0), decodeAsAddress(1)))
             }
-            case 0x989579aa /* "setApprovalForAll(address, bool)" */ {
+            case 0xa22cb465 /* "setApprovalForAll(address, bool)" */ {
                 enforceNonPayable()
                 // _setApprovalForAll(_msgSender(), operator, approved)
                 _setApprovalForAll(caller(), decodeAsAddress(0), decodeAsBool(1))
@@ -45,11 +45,16 @@ object "Token" {
             case 0x0febdd49 /* "safeTransferFrom(address,address,uint256,uint256)" ignoring bytes for now*/ {                
                 _safeTransferFrom(decodeAsAddress(0), decodeAsAddress(1), decodeAsUint(2), decodeAsUint(3)/*, decodeAsBytes(3)*/)
             }
-
-            case 0xe950b7f4/* "safeBatchTransferFrom(from, to, ids, amounts)" ignoring bytes for now*/ {
+            case 0xe950b7f4 /* "safeBatchTransferFrom(from, to, ids, amounts)" ignoring bytes for now*/ {
                 _safeBatchTransferFrom(decodeAsAddress(0), decodeAsAddress(1), decodeAsArray(2), decodeAsArray(3)/*, decodeAsBytes(3)*/)
             }
-
+            case 0x156e29f6 /* "mint(address,uint256,uint256)" */ {                
+                // call low-level mint
+                _mint(decodeAsAddress(0), decodeAsUint(1), decodeAsUint(2)/*, decodeAsBytes(3)*/)
+                
+                // on success
+                returnTrue()
+            }            
             // mintBatch, burn, burnBatch
 
             // add case for return uri(tokenID)
@@ -84,7 +89,7 @@ object "Token" {
                 mstore(0x20, nestedMappingHash)
 
                 // location balances[tokenID][account] 
-                offset := keccak256(0x00, 0x20)
+                offset := keccak256(0x00, 0x40)
 			}
 
 			function operatorApprovalsStorageOffset(account, operator) -> offset {
@@ -93,14 +98,14 @@ object "Token" {
 				// nested mapping
                 mstore(0x00, account)
 				mstore(0x20, operatorApprovalsMappingPos())  
-				let nestedMappingHash := keccak256(0, 0x40)
+				let nestedMappingHash := keccak256(0x00, 0x40)
 
                 // outter mapping
                 mstore(0x00, operator)
                 mstore(0x20, nestedMappingHash)
 
                 // location operatorApprovals[account][operator] 
-                offset := keccak256(0x00, 0x20)
+                offset := keccak256(0x00, 0x40)
 			}
 
             /* -------- storage access functions ---------- */
@@ -187,7 +192,7 @@ object "Token" {
 
             function _setApprovalForAll(owner, operator, approved) {
                 // require(owner != operator, "ERC1155: setting approval status for self");
-                if eq(owner, operator) { revert(0, 0) }
+                if eq(caller(), operator) { revert(0, 0) }
 
                 // set approval bool in mapping offset
                 sstore(operatorApprovalsStorageOffset(owner, operator), approved)
