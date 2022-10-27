@@ -25,14 +25,13 @@ object "Token" {
             // Dispatcher
             // All high-level functions
             switch selector()
-            case 0xd330b578 /* "balanceOf(address, uint256)" */ {
+            case 0x00fdd58e /* "balanceOf(address,uint256)" */ {
                 enforceNonPayable()
                 returnUint(balanceOf(decodeAsAddress(0), decodeAsUint(1)))
             } 
             case 0x4e1273f4 /* "balanceOfBatch(address[],uint256[])" */ {
                 enforceNonPayable()
-                // temp for now, should return an array of balances
-                returnUint(balanceOfBatch(decodeAsArray(0), decodeAsArray(1)))
+                returnArray(balanceOfBatch(decodeAsArray(0), decodeAsArray(1)))
             }
             case 0xe985e9c5 /* "isApprovedForAll(address,address)" */ {
                 enforceNonPayable()
@@ -50,7 +49,9 @@ object "Token" {
                 // on success
                 returnTrue()
             }
-            // case for return uri(tokenID)
+            // add case for return uri(tokenID)
+
+
             default {
                 revert(0, 0)
             }
@@ -74,14 +75,14 @@ object "Token" {
 				// nested mapping
                 mstore(0x00, account)
 				mstore(0x20, acctBalancesMappingPos())  
-				let nestedMappingHash := keccak256(0, 0x40)
+				let nestedMappingHash := keccak256(0x00, 0x40)
 
                 // outter mapping
-                mstore(0x60, id)
-                mstore(0x80, nestedMappingHash)
+                mstore(0x00, id)
+                mstore(0x20, nestedMappingHash)
 
                 // location balances[tokenID][account] 
-                offset := keccak256(0x60, 0x80)
+                offset := keccak256(0x00, 0x20)
 			}
 
 			function operatorApprovalsStorageOffset(account, operator) -> offset {
@@ -93,11 +94,11 @@ object "Token" {
 				let nestedMappingHash := keccak256(0, 0x40)
 
                 // outter mapping
-                mstore(0x60, operator)
-                mstore(0x80, nestedMappingHash)
+                mstore(0x00, operator)
+                mstore(0x20, nestedMappingHash)
 
                 // location operatorApprovals[account][operator] 
-                offset := keccak256(0x60, 0x80)
+                offset := keccak256(0x00, 0x20)
 			}
 
             /* ---------- high-level functions ----------- */
@@ -133,9 +134,6 @@ object "Token" {
                 // and max 1 mint at a time
                 equalsMinMint(amount)
 
-                // check if deployer of contract(owner) is calling
-                require(calledByOwner())
-
                 // _balances[id][to] += amount;
                 addToBalance(to, id, amount)
 
@@ -156,7 +154,7 @@ object "Token" {
                 bal := sload(balancesStorageOffset(account, id))
             }
 
-            function balanceOfBatch(accountsLengthMemPos, idsLengthMemPos) -> balances {
+            function balanceOfBatch(accountsLengthMemPos, idsLengthMemPos) -> balanceLengthPtr {
                 /* parameters passed in are the pos
                 ...of the arrays as memory is laid out end to end
                 to read each individual element you move the lengthmemoryPtr + 32 -> by 32 bytes
@@ -168,10 +166,45 @@ object "Token" {
                 // check if arrays are same length
                 compareArrayLengths(accountsLengthMemPos, idsLengthMemPos)
 
-                // initalize an array in memory at the free memory pointer
+                // balances array length
+                let balancesLength := mload(accountsLengthMemPos)
 
+                // ** roll this into one function/simplify - reusable **
+                // initalize the balances array in memory at the free memory pointer
+                // when returning an array we pass the ptr location to be read from
+                // which points to where the length position is stored in memory
+                // we do this so we can return end-to-end: lengthptr->length->data packed next to each other
+                balanceLengthPtr := getFMP() // also returned at end of function execution
+                mstore(balanceLengthPtr, add(balanceLengthPtr, 0x20))
+                incrementFMP(0x20)
+                // next in the following 32 bytes store the length 
+                mstore(getFMP(), balancesLength)
+                incrementFMP(0x20)
 
-                balances := accountsLengthMemPos
+                // loop as many times as the balanceLength array should be
+                // balances[index] = balanceOf[address][id]
+                for { let i := 0 } lt(i, balancesLength) { i := add(i, 1) } {
+                    // where to write the current index of balances
+                    let toWritePos := getFMP()
+
+                    // for each arr what pos to read the current index at
+                    // add 0x20 to account for the length slot
+                    let shiftPos := add(mul(i, 0x20), 0x20)
+
+                    // get the account and id data values
+                    let account := mload(add(accountsLengthMemPos, shiftPos)) 
+                    let id := mload(add(idsLengthMemPos, shiftPos))
+
+                    // retrieve the balance
+                    //let bal := balanceOf(account, id)
+                    let bal := sload(balancesStorageOffset(account, id))
+
+                    // store balance for this index in specified position
+                    mstore(toWritePos, bal)
+
+                    // increment FMP by 32 bytes
+                    incrementFMP(0x20)
+                }
             }
 
             function _operatorApprovalsAccess(account, operator) -> approvalBool {
@@ -297,11 +330,26 @@ object "Token" {
                 return(0, 0x20)
             }
 
+            function returnArray(arrLengthPtr) {
+                // load array length ptr position
+                let arrLengthPos := mload(arrLengthPtr)
+
+                // full arr length + 2 to account for the 32 bytes of ptr and length
+                let arrFullLength := add(mload(arrLengthPos), 2)
+
+                // entire array byte size
+                let arrFullSize := mul(arrFullLength, 0x20)
+
+                // return entire array from start of length ptr to the end of data
+                return (arrLengthPtr, arrFullSize)
+            }
+
             function returnTrue() {
                 returnUint(1)
             }
 
             /* -------- events ---------- */
+            /*
             function emitTransfer(from, to, amount) {
                 let signatureHash := 0xddf252ad1be2c89b69c2b068fc378daa952ba7f163c4a11628f55a4df523b3ef
                 emitEvent(signatureHash, from, to, amount)
@@ -314,6 +362,7 @@ object "Token" {
                 mstore(0, nonIndexed)
                 log3(0, 0x20, signatureHash, indexed1, indexed2)
             }
+            */
 
             /* -------- storage access helpers ---------- */
             function ownerAddress() -> o {
@@ -398,6 +447,7 @@ object "Token" {
                 // must be less than or equal to contructor specified max mint amount
                 // (maximum tokens you can mint in one transaction) 
                 require(lte(amount, minMintAmt()))
+
                 // must equal constructor specified max mint value * amount minting
                 // (value passed in must be correct for the amount you are minting)
                 require(eq(mul(minMintVal(), amount), callvalue()))
