@@ -43,12 +43,16 @@ object "Token" {
                 _setApprovalForAll(caller(), decodeAsAddress(0), decodeAsBool(1))
             }
             case 0x0febdd49 /* "safeTransferFrom(address,address,uint256,uint256)" ignoring bytes for now*/ {                
-                // call low-level function
                 _safeTransferFrom(decodeAsAddress(0), decodeAsAddress(1), decodeAsUint(2), decodeAsUint(3)/*, decodeAsBytes(3)*/)
             }
 
-            // add case for return uri(tokenID)
+            case 0xe950b7f4/* "safeBatchTransferFrom(from, to, ids, amounts)" ignoring bytes for now*/ {
+                _safeBatchTransferFrom(decodeAsAddress(0), decodeAsAddress(1), decodeAsArray(2), decodeAsArray(3)/*, decodeAsBytes(3)*/)
+            }
 
+            // mintBatch, burn, burnBatch
+
+            // add case for return uri(tokenID)
 
             default {
                 revert(0, 0)
@@ -99,33 +103,6 @@ object "Token" {
                 offset := keccak256(0x00, 0x20)
 			}
 
-            /* ---------- high-level functions ----------- */
-            /* should be blended into the case (those are the high-level functions)
-            // comment these out **************
-            function transfer(to, amount) {
-                executeTransfer(caller(), to, amount)
-            }
-
-            function approve(spender, amount) {
-                revertIfZeroAddress(spender)
-                setAllowance(caller(), spender, amount)
-                emitApproval(caller(), spender, amount)
-            }
-
-            function transferFrom(from, to, amount) {
-                decreaseAllowanceBy(from, caller(), amount)
-                executeTransfer(from, to, amount)
-            }
-
-            function executeTransfer(from, to, amount) {
-                revertIfZeroAddress(to)
-                deductFromBalance(from, amount)
-                addToBalance(to, amount)
-                emitTransfer(from, to, amount)
-            }
-            */
-            // comment these out **************
-
             /* -------- storage access functions ---------- */
             function _mint(to, id, amount /*, data*/) {
                 // check if they passed in 0.001 ether
@@ -168,7 +145,6 @@ object "Token" {
                 // balances array length
                 let balancesLength := mload(accountsLengthMemPos)
 
-                // ** roll this into one function/simplify - reusable **
                 // initalize the balances array in memory at the free memory pointer
                 // when returning an array we pass the ptr location to be read from
                 // which points to where the length position is stored in memory
@@ -195,8 +171,7 @@ object "Token" {
                     let id := mload(add(idsLengthMemPos, shiftPos))
 
                     // retrieve the balance
-                    //let bal := balanceOf(account, id)
-                    let bal := sload(balancesStorageOffset(account, id))
+                    let bal := balanceOf(account, id)
 
                     // store balance for this index in specified position
                     mstore(toWritePos, bal)
@@ -226,6 +201,9 @@ object "Token" {
                 // continue with execution if no revert occurs
                 validInitiator(from)
 
+                // require to is not the zero-address
+                revertIfZeroAddress(to)
+
                 // uint256 fromBalance = _balances[id][from];
                 let fromBalance := balanceOf(from, id)
                 
@@ -243,14 +221,57 @@ object "Token" {
                 // _doSafeTransferAcceptanceCheck(operator, from, to, id, amount, data);
             }
 
-            function _safeBatchTransferFrom(from, to, ids, amounts /*, data*/) {
+            function _safeBatchTransferFrom(from, to, idsLengthMemPos, amountsLengthMemPos /*, data*/) {
                 // require from is msg.sender or isApprovedForAll(from, msg.sender)
                 // continue with execution if no revert occurs
-                validInitiator(from)  
+                validInitiator(from)
 
-                //_afterTokenTransfer(operator, from, to, ids, amounts, data);
+                // require to is not the zero-address
+                revertIfZeroAddress(to)  
 
-                //_doSafeBatchTransferAcceptanceCheck(operator, from, to, ids, amounts, data);
+                // check if arrays are same length
+                compareArrayLengths(idsLengthMemPos, amountsLengthMemPos)
+
+                // length of both arrays, as we know they are equal sized
+                let commonArrLength := mload(idsLengthMemPos)
+
+                // loop as many times as the commonArrLength array should be
+                for { let i := 0 } lt(i, commonArrLength) { i := add(i, 1) } {
+                    // where to write the current index of balances
+                    let toWritePos := getFMP()
+
+                    // for each arr what pos to read the current index at
+                    // add 0x20 to account for the length slot
+                    let shiftPos := add(mul(i, 0x20), 0x20)
+
+                    // get the account and id data values
+                    let id := mload(add(idsLengthMemPos, shiftPos)) 
+                    let amount := mload(add(amountsLengthMemPos, shiftPos))
+
+                    // fromBalance = _balances[id][from];
+                    let fromBalance := balanceOf(from, id)
+
+                    // require(fromBalance >= amount
+                    require(gte(fromBalance, amount))
+
+                    // _balances[id][from] = fromBalance - amount;
+                    deductFromBalance(from, id, amount)
+                
+                    // _balances[id][to] += amount;
+                    addToBalance(to, id, amount)
+                }                 
+
+                // emit TransferBatch(operator, from, to, ids, amounts);
+
+                // _doSafeBatchTransferAcceptanceCheck(operator, from, to, ids, amounts, data);
+            }
+
+            function _doSafeTransferAcceptanceCheck(operator, from, to, id, amount /*, data*/) {
+                // first check extcodesize to see if contract
+            }
+
+            function _doSafeBatchTransferAcceptanceCheck(operator, from, to, ids, amounts /*, data*/) {
+                // first check extcodesize to see if contract
             }
 
             /* ---------- calldata decoding functions ----------- */
@@ -433,17 +454,6 @@ object "Token" {
                 sstore(offset, sub(bal, amount))
             }
 
-            function validInitiator(from) {
-                // from == _msgSender() || isApprovedForAll(from, _msgSender())
-                // if acc from is not the msg.sender and the msg.sender is not
-                // ...approved for the account token is coming out of then revert
-                if not(eq(caller(), from)) {
-                    if not(_operatorApprovalsAccess(from, caller())) {
-                        revert(0,0)
-                    } 
-                }
-            }
-
             /* ---------- utility functions ---------- */
             function lte(a, b) -> r {
                 r := iszero(gt(a, b))
@@ -500,6 +510,17 @@ object "Token" {
             function isBool(data) {
                 // if data < 2 this is a bool val (0,1)
                 require(lt(data, 2))
+            }
+
+            function validInitiator(from) {
+                // from == _msgSender() || isApprovedForAll(from, _msgSender())
+                // if acc from is not the msg.sender and the msg.sender is not
+                // ...approved for the account token is coming out of then revert
+                if not(eq(caller(), from)) {
+                    if not(_operatorApprovalsAccess(from, caller())) {
+                        revert(0,0)
+                    } 
+                }
             }
 
             function compareArrayLengths(arr1, arr2) {
