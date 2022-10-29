@@ -27,15 +27,15 @@ object "Token" {
             switch selector()
             case 0x00fdd58e /* "balanceOf(address,uint256)" */ {
                 enforceNonPayable()
-                returnUint(balanceOf(decodeAsAddress(0), decodeAsUint(1)))
+                returnSingleSlotData(balanceOf(decodeAsAddress(0), decodeAsUint(1)))
             } 
             case 0x4e1273f4 /* "balanceOfBatch(address[],uint256[])" */ {
                 enforceNonPayable()
-                returnArray(balanceOfBatch(decodeAsArray(0), decodeAsArray(1)))
+                balanceOfBatch(decodeAsArray(0), decodeAsArray(1))
             }
             case 0xe985e9c5 /* "isApprovedForAll(address,address)" */ {
                 enforceNonPayable()
-                returnBool(_operatorApprovalsAccess(decodeAsAddress(0), decodeAsAddress(1)))
+                returnSingleSlotData(_operatorApprovalsAccess(decodeAsAddress(0), decodeAsAddress(1)))
             }
             case 0xa22cb465 /* "setApprovalForAll(address, bool)" */ {
                 enforceNonPayable()
@@ -51,11 +51,7 @@ object "Token" {
                 _safeBatchTransferFrom(decodeAsAddress(0), decodeAsAddress(1), decodeAsArray(2), decodeAsArray(3)/*, decodeAsBytes(3)*/)
             }
             case 0x156e29f6 /* "mint(address,uint256,uint256)" */ {                
-                // call low-level mint
                 _mint(decodeAsAddress(0), decodeAsUint(1), decodeAsUint(2)/*, decodeAsBytes(3)*/)
-                
-                // on success
-                returnTrue()
             }            
             // mintBatch, burn, burnBatch
 
@@ -83,7 +79,7 @@ object "Token" {
 
 				// nested mapping
                 mstore(0x00, id) // 0x00 -> 0x20
-				mstore(0x20, acctBalancesMappingPos()) // 0x20 ->0x40  
+				mstore(0x20, acctBalancesMappingPos()) // 0x20 -> 0x40  
 				let nestedMappingHash := keccak256(0x00, 0x40) 
 
                 // outter mapping
@@ -104,7 +100,7 @@ object "Token" {
 
                 // outter mapping
                 mstore(0x00, operator) // overwrite 0x00 -> 0x20
-                mstore(0x20, nestedMappingHash) // overwrite 0x20 ->0x40
+                mstore(0x20, nestedMappingHash) // overwrite 0x20 -> 0x40
 
                 // location operatorApprovals[account][operator]  
                 offset := keccak256(0x00, 0x40)
@@ -137,7 +133,7 @@ object "Token" {
                 bal := sload(balancesStorageOffset(account, id))
             }
 
-            function balanceOfBatch(accountsLengthMemPos, idsLengthMemPos) -> returnLengthPtrPos {
+            function balanceOfBatch(accountsLengthMemPos, idsLengthMemPos) {
                 /* parameters passed in are the pos
                 ...of the arrays as memory is laid out end to end
                 to read each individual element you move the lengthmemoryPtr + 32 -> by 32 bytes
@@ -156,7 +152,7 @@ object "Token" {
                 // when returning an array we pass a ptr location to be read from 
                 // which points to where the length position is stored in (in return data)
                 // we do this so we can return end-to-end: PtrReturnArrLength->arrLength->Data packed next to each other
-                returnLengthPtrPos := getFMP()
+                let returnLengthPtrPos := getFMP()
                 mstore(returnLengthPtrPos, 0x20) // length of arr is pos 0x20 in return data for this func
                 incrementFMP(0x20)
                 // next in the following 32 bytes store the length 
@@ -186,6 +182,9 @@ object "Token" {
                     // increment FMP by 32 bytes
                     incrementFMP(0x20)
                 }
+
+                // returns the array location (returnLengthPtr -> end of data) in memory
+                return(returnLengthPtrPos,getFMP())
             }
 
             function _operatorApprovalsAccess(account, operator) -> approvalBool {
@@ -194,7 +193,7 @@ object "Token" {
 
             function _setApprovalForAll(owner, operator, approved) {
                 // require(owner != operator, "ERC1155: setting approval status for self");
-                if eq(caller(), operator) { revert(0, 0) }
+                if eq(owner, operator) { revert(0, 0) }
 
                 // set approval bool in mapping offset
                 sstore(operatorApprovalsStorageOffset(owner, operator), approved)
@@ -380,16 +379,14 @@ object "Token" {
             }
 
             /* ---------- calldata encoding functions ---------- */
-            function returnUint(v) {
+            // handles all return data that only takes up 32 bytes
+            // i.e uints,bools etc 
+            function returnSingleSlotData(v) {
                 mstore(0x00, v)
                 return(0x00, 0x20)
             }
 
-            function returnBool(b) {
-                mstore(0x00, b)
-                return(0x00, 0x20)
-            }
-
+            /* uneccessary just return from function
             function returnArray(returnLengthPtrPos) {
                 // load array length
                 // arrLength position is at 0x20 + returnLengthPtrPos
@@ -404,10 +401,7 @@ object "Token" {
                 // return entire array from start of return length ptr to the end of data
                 return (returnLengthPtrPos, getFMP())
             }
-
-            function returnTrue() {
-                returnUint(1)
-            }
+            */
 
             /* -------- events ---------- */
             /*
@@ -488,6 +482,7 @@ object "Token" {
                 require(addr)
             }
 
+            /* memory operations */
             // get current free memory pointer location
             function getFMP() -> fmp {
                 fmp := mload(0x40)
