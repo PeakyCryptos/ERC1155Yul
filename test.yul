@@ -43,9 +43,11 @@ object "Token" {
                 _setApprovalForAll(caller(), decodeAsAddress(0), decodeAsBool(1))
             }
             case 0x0febdd49 /* "safeTransferFrom(address,address,uint256,uint256)" ignoring bytes for now*/ {                
+                enforceNonPayable()
                 _safeTransferFrom(decodeAsAddress(0), decodeAsAddress(1), decodeAsUint(2), decodeAsUint(3)/*, decodeAsBytes(3)*/)
             }
             case 0xe950b7f4 /* "safeBatchTransferFrom(from, to, ids, amounts)" ignoring bytes for now*/ {
+                enforceNonPayable()
                 _safeBatchTransferFrom(decodeAsAddress(0), decodeAsAddress(1), decodeAsArray(2), decodeAsArray(3)/*, decodeAsBytes(3)*/)
             }
             case 0x156e29f6 /* "mint(address,uint256,uint256)" */ {                
@@ -70,7 +72,7 @@ object "Token" {
             function uriPos() -> p { p := 3 }	
             // balances[tokenID][account]
 			function acctBalancesMappingPos() -> p { p := 4 }
-            // operatorApprovals[account][spender] 
+            // operatorApprovals[account][operator] 
 			function operatorApprovalsMappingPos() -> p { p := 5 } 
 	
             // Mapping from token ID to account balances
@@ -80,13 +82,13 @@ object "Token" {
                 // no need to keep track of FMP as we only use scratch space
 
 				// nested mapping
-                mstore(0x00, account)
-				mstore(0x20, acctBalancesMappingPos())  
-				let nestedMappingHash := keccak256(0x00, 0x40)
+                mstore(0x00, id) // 0x00 -> 0x20
+				mstore(0x20, acctBalancesMappingPos()) // 0x20 ->0x40  
+				let nestedMappingHash := keccak256(0x00, 0x40) 
 
                 // outter mapping
-                mstore(0x00, id)
-                mstore(0x20, nestedMappingHash)
+                mstore(0x00, account) // overwrite 0x00 -> 0x20
+                mstore(0x20, nestedMappingHash) // overwrite 0x20 ->0x40
 
                 // location balances[tokenID][account] 
                 offset := keccak256(0x00, 0x40)
@@ -96,15 +98,15 @@ object "Token" {
                 // no need to keep track of FMP as we only use scratch space
 
 				// nested mapping
-                mstore(0x00, account)
-				mstore(0x20, operatorApprovalsMappingPos())  
-				let nestedMappingHash := keccak256(0x00, 0x40)
+                mstore(0x00, account) // 0x00 -> 0x20
+				mstore(0x20, operatorApprovalsMappingPos()) // 0x20 -> 0x40  
+				let nestedMappingHash := keccak256(0x00, 0x40) 
 
                 // outter mapping
-                mstore(0x00, operator)
-                mstore(0x20, nestedMappingHash)
+                mstore(0x00, operator) // overwrite 0x00 -> 0x20
+                mstore(0x20, nestedMappingHash) // overwrite 0x20 ->0x40
 
-                // location operatorApprovals[account][operator] 
+                // location operatorApprovals[account][operator]  
                 offset := keccak256(0x00, 0x40)
 			}
 
@@ -135,7 +137,7 @@ object "Token" {
                 bal := sload(balancesStorageOffset(account, id))
             }
 
-            function balanceOfBatch(accountsLengthMemPos, idsLengthMemPos) -> balanceLengthPtr {
+            function balanceOfBatch(accountsLengthMemPos, idsLengthMemPos) -> returnLengthPtrPos {
                 /* parameters passed in are the pos
                 ...of the arrays as memory is laid out end to end
                 to read each individual element you move the lengthmemoryPtr + 32 -> by 32 bytes
@@ -151,11 +153,11 @@ object "Token" {
                 let balancesLength := mload(accountsLengthMemPos)
 
                 // initalize the balances array in memory at the free memory pointer
-                // when returning an array we pass the ptr location to be read from
-                // which points to where the length position is stored in memory
-                // we do this so we can return end-to-end: lengthptr->length->data packed next to each other
-                balanceLengthPtr := getFMP() // also returned at end of function execution
-                mstore(balanceLengthPtr, add(balanceLengthPtr, 0x20))
+                // when returning an array we pass a ptr location to be read from 
+                // which points to where the length position is stored in (in return data)
+                // we do this so we can return end-to-end: PtrReturnArrLength->arrLength->Data packed next to each other
+                returnLengthPtrPos := getFMP()
+                mstore(returnLengthPtrPos, 0x20) // length of arr is pos 0x20 in return data for this func
                 incrementFMP(0x20)
                 // next in the following 32 bytes store the length 
                 mstore(getFMP(), balancesLength)
@@ -379,27 +381,28 @@ object "Token" {
 
             /* ---------- calldata encoding functions ---------- */
             function returnUint(v) {
-                mstore(0, v)
-                return(0, 0x20)
+                mstore(0x00, v)
+                return(0x00, 0x20)
             }
 
             function returnBool(b) {
-                mstore(0, b)
-                return(0, 0x20)
+                mstore(0x00, b)
+                return(0x00, 0x20)
             }
 
-            function returnArray(arrLengthPtr) {
-                // load array length ptr position
-                let arrLengthPos := mload(arrLengthPtr)
+            function returnArray(returnLengthPtrPos) {
+                // load array length
+                // arrLength position is at 0x20 + returnLengthPtrPos
+                let arrLength := mload(add(returnLengthPtrPos, 0x20))
 
                 // full arr length + 2 to account for the 32 bytes of ptr and length
-                let arrFullLength := add(mload(arrLengthPos), 2)
+                let arrFullLength := add(arrLength, 2)
 
                 // entire array byte size
                 let arrFullSize := mul(arrFullLength, 0x20)
 
-                // return entire array from start of length ptr to the end of data
-                return (arrLengthPtr, arrFullSize)
+                // return entire array from start of return length ptr to the end of data
+                return (returnLengthPtrPos, getFMP())
             }
 
             function returnTrue() {
