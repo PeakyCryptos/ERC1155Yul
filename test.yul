@@ -42,17 +42,22 @@ object "Token" {
                 // _setApprovalForAll(_msgSender(), operator, approved)
                 _setApprovalForAll(caller(), decodeAsAddress(0), decodeAsBool(1))
             }
-            case 0x0febdd49 /* "safeTransferFrom(address,address,uint256,uint256)" ignoring bytes for now*/ {                
+            case 0xf242432a /* "safeTransferFrom(address,address,uint256,uint256,bytes)" */ {                
                 enforceNonPayable()
-                _safeTransferFrom(decodeAsAddress(0), decodeAsAddress(1), decodeAsUint(2), decodeAsUint(3)/*, decodeAsBytes(3)*/)
+                _safeTransferFrom(decodeAsAddress(0), decodeAsAddress(1), decodeAsUint(2), decodeAsUint(3), decodeAsBytes(4))
             }
-            case 0xe950b7f4 /* "safeBatchTransferFrom(from, to, ids, amounts)" ignoring bytes for now*/ {
+            case 0xfbb8db1b /* "safeBatchTransferFrom(from,to[],ids[],amounts,bytes)" */ {
                 enforceNonPayable()
-                _safeBatchTransferFrom(decodeAsAddress(0), decodeAsAddress(1), decodeAsArray(2), decodeAsArray(3)/*, decodeAsBytes(3)*/)
+                _safeBatchTransferFrom(decodeAsAddress(0), decodeAsAddress(1), decodeAsArray(2), decodeAsArray(3), decodeAsBytes(4))
             }
-            case 0x156e29f6 /* "mint(address,uint256,uint256)" */ {                
-                _mint(decodeAsAddress(0), decodeAsUint(1), decodeAsUint(2)/*, decodeAsBytes(3)*/)
-            }            
+            case 0x731133e9/* "mint(address,uint256,uint256,bytes)" */ {                
+                _mint(decodeAsAddress(0), decodeAsUint(1), decodeAsUint(2), decodeAsBytes(3))
+            }
+            case 0x156e29f6 /* "mint(address,uint256,uint256)" */ { 
+                let bytesData := 0x0000000000000000000000000000000000000000000000000000000000000000      
+                // mint without bytes         
+                _mint(decodeAsAddress(0), decodeAsUint(1), decodeAsUint(2), bytesData)
+            }                
             // mintBatch, burn, burnBatch
 
             // add case for return uri(tokenID)
@@ -107,7 +112,7 @@ object "Token" {
 			}
 
             /* -------- storage access functions ---------- */
-            function _mint(to, id, amount /*, data*/) {
+            function _mint(to, id, amount, data) {
                 // check if they passed in 0.001 ether
                 // and max 10 mints of a token at a time
                 equalsMinMint(amount)
@@ -167,6 +172,7 @@ object "Token" {
                 let returnLengthPtrPos := getFMP()
                 mstore(returnLengthPtrPos, 0x20) // length of arr is pos 0x20 in return data for this func
                 incrementFMP(0x20)
+                
                 // next in the following 32 bytes store the length 
                 mstore(getFMP(), balancesLength)
                 incrementFMP(0x20)
@@ -214,7 +220,7 @@ object "Token" {
             }
 
             // _safeTransferFrom(from, to, id, amount, data);
-            function _safeTransferFrom(from, to, id, amount /*, data*/) {
+            function _safeTransferFrom(from, to, id, amount, data) {
                 // require from is msg.sender or isApprovedForAll(from, msg.sender)
                 // continue with execution if no revert occurs
                 validInitiator(from)
@@ -239,7 +245,7 @@ object "Token" {
                 // _doSafeTransferAcceptanceCheck(operator, from, to, id, amount, data);
             }
 
-            function _safeBatchTransferFrom(from, to, idsLengthMemPos, amountsLengthMemPos /*, data*/) {
+            function _safeBatchTransferFrom(from, to, idsLengthMemPos, amountsLengthMemPos, data) {
                 // require from is msg.sender or isApprovedForAll(from, msg.sender)
                 // continue with execution if no revert occurs
                 validInitiator(from)
@@ -284,13 +290,13 @@ object "Token" {
                 // _doSafeBatchTransferAcceptanceCheck(operator, from, to, ids, amounts, data);
             }
 
-            function _doSafeTransferAcceptanceCheck(operator, from, to, id, amount /*, data*/) {
+            function _doSafeTransferAcceptanceCheck(operator, from, to, id, amount, data) {
                 if isContract(to) {
 
                 }
             }
 
-            function _doSafeBatchTransferAcceptanceCheck(operator, from, to, ids, amounts /*, data*/) {
+            function _doSafeBatchTransferAcceptanceCheck(operator, from, to, ids, amounts, data) {
                 // first check extcodesize to see if contract
             }
 
@@ -381,7 +387,7 @@ object "Token" {
                 incrementFMP(fullArrDataSize)
             }
 
-            function decodeAsBytes(offset) -> bytesLengthMemPos {
+            function decodeAsBytes(offset) -> bytesSizeMemPos {
                 /* similar to how an array is decoded however the ptr points to calldata offeset
                    where the size of the bytes data is stored. Unlike an array using the
                    length (amount of elements in the array)
@@ -400,27 +406,26 @@ object "Token" {
                 // if bytes size is 0 revert
                 require(bytesSizeData)
 
-                // full byte size of array including length portion
-                let fullArrDataSize := mul(arrLengthData, 0x20)
-
+                /*
                 // ensure this is a valid bytes data (size matches the bytes passed in)
                 // the length * 0x20  (how many 32 bytes lengths it takes up)   
                 // calldatasize = arrLengthPos + fullArrDataSize        
                 if lt(calldatasize(), add(arrLengthPos, fullArrDataSize)) {
                     revert(0, 0)
                 }
+                */
 
                 // This is returned to the calling function at the end of function execution
-                // holds in memory where to start copying the full array
-                // first 32 bytes will hold the length porition of the array
-                arrLengthMemPos := getFMP()
+                // holds in memory where to start copying the bytes data
+                // first 32 bytes will hold the length porition of the data
+                bytesSizeMemPos := getFMP()
                 
                 // copy to memory (starting at where the free memory pointer is)
-                // copies the full array including the length)
-                calldatacopy(arrLengthMemPos, arrLengthPos, fullArrDataSize)
+                // copies the full byte size(including the length)
+                calldatacopy(bytesSizeMemPos, cdSizePos, bytesSizeData)
 
-                // increment the FMP by the full arr size
-                incrementFMP(fullArrDataSize)
+                // increment the FMP by the full bytes size
+                incrementFMP(bytesSizeData)
             }
 
             function decodeAsSingletonArray(offset) -> arrLengthMemPos {
