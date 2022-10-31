@@ -109,7 +109,7 @@ object "Token" {
             /* -------- storage access functions ---------- */
             function _mint(to, id, amount /*, data*/) {
                 // check if they passed in 0.001 ether
-                // and max 1 mint at a time
+                // and max 10 mints of a token at a time
                 equalsMinMint(amount)
 
                 // _balances[id][to] += amount;
@@ -119,6 +119,18 @@ object "Token" {
 
                 // _doSafeTransferAcceptanceCheck(operator, address(0), to, id, amount, data);
 
+            }
+
+            function _mintBatch() {
+                //
+            }
+
+            function burn() {
+
+            }
+
+            function burnBatch() {
+                //
             }
 
             function uri(id) {
@@ -273,7 +285,9 @@ object "Token" {
             }
 
             function _doSafeTransferAcceptanceCheck(operator, from, to, id, amount /*, data*/) {
-                // first check extcodesize to see if contract
+                if isContract(to) {
+
+                }
             }
 
             function _doSafeBatchTransferAcceptanceCheck(operator, from, to, ids, amounts /*, data*/) {
@@ -289,7 +303,7 @@ object "Token" {
                 v := decodeAsUint(offset)
                 if iszero(iszero(and(v, not(0xffffffffffffffffffffffffffffffffffffffff)))) {
                     revert(0, 0)
-                }
+                } 
             }
 
             function decodeAsUint(offset) -> v {
@@ -315,17 +329,6 @@ object "Token" {
                 // if not reverts
                 isBool(data) 
             }
-
-            /*
-            function decodeAsBytes(offset) -> v {
-                // Work in progress
-                let pos := add(4, mul(offset, 0x20))
-                if lt(calldatasize(), add(pos, 0x20)) {
-                    revert(0, 0)
-                }
-                v := calldataload(pos)
-            }
-            */
 
             function decodeAsArray(offset) -> arrLengthMemPos {
                 /* offset passed in is the location to start reading the following 32 bytes
@@ -378,6 +381,52 @@ object "Token" {
                 incrementFMP(fullArrDataSize)
             }
 
+            function decodeAsBytes(offset) -> bytesLengthMemPos {
+                /* similar to how an array is decoded however the ptr points to calldata offeset
+                   where the size of the bytes data is stored. Unlike an array using the
+                   length (amount of elements in the array)
+                */
+
+                // calldata offset position
+                let cdSizeOffsetPos := add(4, mul(offset, 0x20))
+
+                // read calldata to get where the arr length portion starts
+                // add 4 as we must account for the function selector
+                let cdSizePos := add(calldataload(cdSizeOffsetPos), 4)
+
+                // full byte size, including size data (preceding 32 bytes)  
+                let bytesSizeData := add(calldataload(cdSizePos), 0x20)
+
+                // if bytes size is 0 revert
+                require(bytesSizeData)
+
+                // full byte size of array including length portion
+                let fullArrDataSize := mul(arrLengthData, 0x20)
+
+                // ensure this is a valid bytes data (size matches the bytes passed in)
+                // the length * 0x20  (how many 32 bytes lengths it takes up)   
+                // calldatasize = arrLengthPos + fullArrDataSize        
+                if lt(calldatasize(), add(arrLengthPos, fullArrDataSize)) {
+                    revert(0, 0)
+                }
+
+                // This is returned to the calling function at the end of function execution
+                // holds in memory where to start copying the full array
+                // first 32 bytes will hold the length porition of the array
+                arrLengthMemPos := getFMP()
+                
+                // copy to memory (starting at where the free memory pointer is)
+                // copies the full array including the length)
+                calldatacopy(arrLengthMemPos, arrLengthPos, fullArrDataSize)
+
+                // increment the FMP by the full arr size
+                incrementFMP(fullArrDataSize)
+            }
+
+            function decodeAsSingletonArray(offset) -> arrLengthMemPos {
+                // convert single item to an array for safeTransfer
+
+            }
             /* ---------- calldata encoding functions ---------- */
             // handles all return data that only takes up 32 bytes
             // i.e uints,bools etc 
@@ -385,23 +434,6 @@ object "Token" {
                 mstore(0x00, v)
                 return(0x00, 0x20)
             }
-
-            /* uneccessary just return from function
-            function returnArray(returnLengthPtrPos) {
-                // load array length
-                // arrLength position is at 0x20 + returnLengthPtrPos
-                let arrLength := mload(add(returnLengthPtrPos, 0x20))
-
-                // full arr length + 2 to account for the 32 bytes of ptr and length
-                let arrFullLength := add(arrLength, 2)
-
-                // entire array byte size
-                let arrFullSize := mul(arrFullLength, 0x20)
-
-                // return entire array from start of return length ptr to the end of data
-                return (returnLengthPtrPos, getFMP())
-            }
-            */
 
             /* -------- events ---------- */
             /*
@@ -456,6 +488,17 @@ object "Token" {
                 sstore(offset, sub(bal, amount))
             }
 
+            /* ---------- memory functions ---------- */
+            // get current free memory pointer location
+            function getFMP() -> fmp {
+                fmp := mload(0x40)
+            }
+
+            // increment free memory pointer by specified amount
+            function incrementFMP(amount) {
+                mstore(0x40, add(getFMP(), amount))
+            }
+
             /* ---------- utility functions ---------- */
             function lte(a, b) -> r {
                 r := iszero(gt(a, b))
@@ -480,17 +523,6 @@ object "Token" {
 
             function revertIfZeroAddress(addr) {
                 require(addr)
-            }
-
-            /* memory operations */
-            // get current free memory pointer location
-            function getFMP() -> fmp {
-                fmp := mload(0x40)
-            }
-
-            // increment free memory pointer by specified amount
-            function incrementFMP(amount) {
-                mstore(0x40, add(getFMP(), amount))
             }
 
             // check if ether was sent
@@ -532,6 +564,13 @@ object "Token" {
                 let data2 := mload(arr2)
 
                 require(eq(data1, data2))
+            }
+
+            function isContract(receiver) -> codeSize {
+                // returns byte size of the contract code
+                // if not a valid contract this will return 0
+                // ...unless called via a contracts constructor
+                codeSize := extcodesize(receiver)
             }
         }
     }
