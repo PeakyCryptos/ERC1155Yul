@@ -6,7 +6,7 @@ object "Token" {
         // Store the minMint value in slot one
         // 1000000000000000 = 0.001 eth
         //sstore(1, 1000000000000000)
-        sstore(1, 0) // 0 for testing
+        sstore(1, 1) // 0 for testing
 
         // Store minMint amount in slot two
         // 10 max mints of an id at once
@@ -30,43 +30,70 @@ object "Token" {
 
             // Dispatcher
             // All high-level functions
+            // enforcing non payable as certain functions require ether
             switch selector()
+            case 0x0e89341c /* "uri(uint256)" */ {
+                enforceNonPayable()
+
+                // tokenID
+                uri(decodeAsUint(0))
+            }
             case 0x00fdd58e /* "balanceOf(address,uint256)" */ {
                 enforceNonPayable()
+
+                // account, id
                 returnSingleSlotData(balanceOf(decodeAsAddress(0), decodeAsUint(1)))
             } 
             case 0x4e1273f4 /* "balanceOfBatch(address[],uint256[])" */ {
                 enforceNonPayable()
+
+                // accounts[], ids[]
                 balanceOfBatch(decodeAsArray(0), decodeAsArray(1))
-            }
-            case 0xe985e9c5 /* "isApprovedForAll(address,address)" */ {
-                enforceNonPayable()
-                returnSingleSlotData(_operatorApprovalsAccess(decodeAsAddress(0), decodeAsAddress(1)))
             }
             case 0xa22cb465 /* "setApprovalForAll(address, bool)" */ {
                 enforceNonPayable()
-                // _setApprovalForAll(_msgSender(), operator, approved)
+
+                // msg.sender, operator, approved
                 _setApprovalForAll(caller(), decodeAsAddress(0), decodeAsBool(1))
+            }
+            case 0xe985e9c5 /* "isApprovedForAll(address,address)" */ {
+                enforceNonPayable()
+
+                // account, operator
+                returnSingleSlotData(_operatorApprovalsAccess(decodeAsAddress(0), decodeAsAddress(1)))
             }
             case 0xf242432a /* "safeTransferFrom(address,address,uint256,uint256,bytes)" */ {                
                 enforceNonPayable()
+
+                // from, to, id, amount
                 _safeTransferFrom(decodeAsAddress(0), decodeAsAddress(1), decodeAsUint(2), decodeAsUint(3), decodeAsBytes(4))
             }
             case 0x2eb2c2d6 /* "safeBatchTransferFrom(address,address,uint256[],uint256[],bytes)" */ {
                 enforceNonPayable()
+                
+                // from, to, ids[], amounts[], data 
                 _safeBatchTransferFrom(decodeAsAddress(0), decodeAsAddress(1), decodeAsArray(2), decodeAsArray(3), decodeAsBytes(4))
             }
-            case 0x731133e9 /* "mint(address,uint256,uint256,bytes)" */ {              
+            case 0x731133e9 /* "mint(address,uint256,uint256,bytes)" */ {
+                // to, id, amount, data              
                 _mint(decodeAsAddress(0), decodeAsUint(1), decodeAsUint(2), decodeAsBytes(3))
             }
             case 0x1f7fdffa /* "mintBatch(address,uint256[],uint256[],bytes)" */ {
+                // to, ids[], amounts[], data
                 _mintBatch(decodeAsAddress(0),decodeAsArray(1),decodeAsArray(2),decodeAsBytes(3))                
             }
+            case 0x80a5a371 /* "burn(uint256,uint256,bytes)" */ {
+                enforceNonPayable()
 
-            case 0x0e89341c /* "uri(uint256)" */ {
-                uri(decodeAsUint(0))
+                // from(msg.sender), id, amount)
+                _burn(caller(),decodeAsAddress(0),decodeAsUint(1))                
             }
+            case 0xe090fa3c /* "burnBatch(uint256[],uint256[],bytes)" */ {
+                enforceNonPayable()
 
+                // from(msg.sender), ids[], amounts[])
+                _burnBatch(caller(),decodeAsArray(0),decodeAsArray(1))                
+            }
             default {
                 revert(0, 0)
             }
@@ -82,7 +109,7 @@ object "Token" {
             // operatorApprovals[account][operator] 
 			function operatorApprovalsMappingPos() -> p { p := 4 }
 
-            // hardcoded uri data positions
+            // hardcoded uri data position
             function uriPos() -> sizePos {
                 // no need to return the data slot locations
                 // as the position is sequential (length + 1) etc
@@ -124,11 +151,12 @@ object "Token" {
                 offset := keccak256(0x00, 0x40)
 			}
 
-            /* -------- storage access functions ---------- */
+            /* -------- main ERC1155 functions ---------- */
             function _mint(to, id, amount, dataSizeMemPos) {
-                // check if they passed in 0.001 ether
-                // and max 10 mints of a token at a time
-                equalsMinMint(amount)
+                // check if callvalue = storage slot 1 data * amount
+                // also ensure no token a higher number than what is in storage slot 2 is minted
+                checkCallValue(amount)
+                checkMaxMint(amount)
 
                 // _balances[id][to] += amount;
                 addToBalance(to, id, amount)
@@ -147,20 +175,57 @@ object "Token" {
                 // make sure arrays are the same length
                 let commonArrLength := compareArrayLengths(idsLengthMemPos, amountsLengthMemPos)
 
-                // loop as many times as the commonArrLength array should be
-                for { let i := 0 } lt(i, commonArrLength) { i := add(i, 1) } {
-                    // where to write the current index of balances
-                    let toWritePos := getFMP()
+                // total tokens being attempted to mint in this function
+                let totalAmount := 0
 
+                // loop as many times as the common array length
+                for { let i := 0 } lt(i, commonArrLength) { i := add(i, 1) } {
                     // corresponding element of array for each iteration of this loop
                     let id, amount := getEqualArrElement(i, idsLengthMemPos, amountsLengthMemPos)
 
+                    // check for this token if you are minting over allowed limit
+                    checkMaxMint(amount)
+
                     // _balances[id][to] += amount;
                     addToBalance(to, id, amount)
-                }                 
+
+                    // increment record keeper
+                    totalAmount := add(totalAmount, amount)
+                }
+
+                // check if callvalue is sufficient for total tokens minted
+                checkCallValue(totalAmount)
 
                 // emit event
                 TransferBatch(caller(), zeroAddress(), to, idsLengthMemPos, amountsLengthMemPos, commonArrLength)
+        
+                // revert if not implementing receiving interface
+                if isContract(to) {
+                    _doSafeBatchTransferAcceptanceCheck(caller(), zeroAddress(), to, idsLengthMemPos, amountsLengthMemPos, bytesSizeMemPos)
+                }        
+            }
+
+            function _burn(from, id, amount) {
+                // _balances[id][from] = fromBalance - amount;
+                deductFromBalance(from, id, amount)
+
+                // emit event
+                TransferSingle(caller(), from, zeroAddress(), id, amount)       
+            }
+
+            function _burnBatch(from, idsLengthMemPos, amountsLengthMemPos) {
+                // compare array lengths
+                // reverts if not equal sized elements
+                let commonArrLength := compareArrayLengths(idsLengthMemPos, amountsLengthMemPos)
+                
+                // loop as many times as the common array length
+                for { let i := 0 } lt(i, commonArrLength) { i := add(i, 1) } {
+                    // corresponding element of array for each iteration of this loop
+                    let id, amount := getEqualArrElement(i, idsLengthMemPos, amountsLengthMemPos)
+
+                    // _balances[id][from] = fromBalance - amount;
+                    deductFromBalance(from, id, amount)
+                }            
             }
 
             // hardcode to default uri
@@ -337,18 +402,16 @@ object "Token" {
                 let onERC1155ReceivedSelector := shl(0xE0, 0xf23a6e61) // 224 bits shift left
 
                 // do a call onto the account and compare returned data
-                /* gas: amount of gas to send to the sub context to execute. 
+                /*  gas: amount of gas to send to the sub context to execute. 
                     The gas that is not used by the sub context is returned to this one.
                     address: the account which context to execute.
+                    value: value in wei to send to the account.
                     argsOffset: byte offset in the memory in bytes, the calldata of the sub context.
                     argsSize: byte size to copy (size of the calldata).
                     retOffset: byte offset in the memory in bytes, where to store the return data of the sub context.
                     retSize: byte size to copy (size of the return data).
                 */
 
-                /* onERC1155Received(address _operator, address _from, uint256 _id, 
-                    ...uint256 _value, bytes calldata _data) 
-                */
 
                 /********* construct calldata arguments *********/
                 //construct calldata in memory end-to-end as calling functions calldata
@@ -388,14 +451,13 @@ object "Token" {
 
                 // pack bytes data end-to-end 
                 // (will be variable memory slots taken depending on the bytes size)
-                packBytesMemory(bytesDataSizeMemPos, bytesSize)
-                let cdEnd := getFMP()
+                packBytesMem(bytesDataSizeMemPos, bytesSize)
 
-                // 196 bytes + size of byte data
-                // the addtional slot from (packBytesMemory func) is only included if the size is correct
-                let cdSize := add(0xc4, bytesSize)                  
+                // 196 bytes + size of byte data 
+                let cdSize := add(0xc4, bytesSize)               
                 /********* construct calldata arguments *********/
 
+                //safeContractCall(cdStart, cdSize)
                 // execute call and require successful return from exeuction context
                 let success := call(gas(), to, 0, cdStart, cdSize, 0x00, 0x20)
                 require(success)
@@ -405,7 +467,6 @@ object "Token" {
             }
 
             function _doSafeBatchTransferAcceptanceCheck(operator, from, to, idsLengthMemPos, amountsLengthMemPos, bytesDataSizeMemPos) {
-                // first check extcodesize to see if contract
                 // should return bytes4(keccak256("onERC1155BatchReceived(address,address,uint256[],uint256[],bytes)"))
                 // 0xbc197c81 when calling onERC1155Received (it's own function selector)
                 // EVM will interpret this with leading 0's so we must shift for selector notation
@@ -415,14 +476,11 @@ object "Token" {
                 /* gas: amount of gas to send to the sub context to execute. 
                     The gas that is not used by the sub context is returned to this one.
                     address: the account which context to execute.
+                    value: value in wei to send to the account.
                     argsOffset: byte offset in the memory in bytes, the calldata of the sub context.
                     argsSize: byte size to copy (size of the calldata).
                     retOffset: byte offset in the memory in bytes, where to store the return data of the sub context.
                     retSize: byte size to copy (size of the return data).
-                */
-
-                /* onERC1155Received(address _operator, address _from, uint256 _id, 
-                    ...uint256 _value, bytes calldata _data) 
                 */
 
                 /********* construct calldata arguments *********/
@@ -475,7 +533,7 @@ object "Token" {
 
                 // id data
                 // copys back array data from memory end-to-end
-                copyArrayMem(arrayLen, idsLengthMemPos)
+                packArrayMem(arrayLen, idsLengthMemPos)
                 /* ID */
 
                 /* AMOUNT */
@@ -484,7 +542,7 @@ object "Token" {
                 incrementFMP(0x20)
 
                 // amount data
-                copyArrayMem(arrayLen, amountsLengthMemPos)
+                packArrayMem(arrayLen, amountsLengthMemPos)
                 /* AMOUNT */
 
                 /* BYTES */
@@ -493,7 +551,7 @@ object "Token" {
                 incrementFMP(0x20)
 
                 // pack bytes data end-to-end
-                packBytesMemory(bytesDataSizeMemPos, bytesSize)
+                packBytesMem(bytesDataSizeMemPos, bytesSize)
                 /* BYTES */                    
                 /* dynamic elements size/length */
                 /********* construct calldata arguments *********/
@@ -776,13 +834,13 @@ object "Token" {
             // for 2 arrays of equal size return same element 
             // i = element of array we want to access (arr[i])
             function getEqualArrElement(i, firstArrMemPos, secondArrMemPos) -> firstData, secondData {
-                    // for each arr what pos to read the current index at
-                    // add 0x20 to account for the length slot
-                    let shiftPos := add(mul(i, 0x20), 0x20)
+                // for each arr what pos to read the current index at
+                // add 0x20 to account for the length slot
+                let shiftPos := add(mul(i, 0x20), 0x20)
 
-                    // get the account and id data values
-                    firstData := mload(add(firstArrMemPos, shiftPos)) 
-                    secondData := mload(add(secondArrMemPos, shiftPos))
+                // get the account and id data values
+                firstData := mload(add(firstArrMemPos, shiftPos)) 
+                secondData := mload(add(secondArrMemPos, shiftPos))
             }
 
             /* ---------- memory functions ---------- */
@@ -796,7 +854,8 @@ object "Token" {
                 mstore(0x40, add(getFMP(), amount))
             }
 
-            function packBytesMemory(bytesDataSizeMemPos, bytesSize) {
+            // copy bytes data from memory back into memory end-to-end (starting at FMP)
+            function packBytesMem(bytesDataSizeMemPos, bytesSize) {
                 // data preceding stores in memory each 32 bytes of data
                 // i.e if 64 bytes of data (0x40) then 0x40 / 0x20 = 2 loops/data
                 // add 1 as i.e 0x02 / 0x20 = 0.0625
@@ -810,11 +869,12 @@ object "Token" {
                 }   
             }
 
-            function copyArrayMem(length, lengthMemPos) {
-                for { let i := 0 } lt(i, length) { i := add(i, 1) } {
+            // copy array data from memory back into memory end-to-end (starting at FMP)
+            function packArrayMem(length, lengthMemPos) {
+                for { let i := 1 } lte(i, length) { i := add(i, 1) } {
                     // for each arr what pos to read the current index at
                     // add 0x20 to account for the length slot
-                    let shiftPos := add(mul(i, 0x20), 0x20)
+                    let shiftPos := mul(i, 0x20)
 
                     // get the account and id data values
                     let data := mload(add(lengthMemPos, shiftPos))
@@ -861,15 +921,18 @@ object "Token" {
                 require(iszero(callvalue()))
             }
 
-            // checks minMint values and amount per transaction
-            function equalsMinMint(amount) {
+            // amount = total tokens minting
+            // check if callvalue is sufficient for the amount being minted
+            function checkCallValue(amount) {
+                // must equal constructor specified max mint value * amount minting
+                require(eq(mul(minMintVal(), amount), callvalue()))
+
+            }
+
+            function checkMaxMint(amount) {
                 // must be less than or equal to contructor specified max mint amount
                 // (maximum tokens you can mint in one transaction) 
                 require(lte(amount, minMintAmt()))
-
-                // must equal constructor specified max mint value * amount minting
-                // (value passed in must be correct for the amount you are minting)
-                require(eq(mul(minMintVal(), amount), callvalue()))
             }
 
             // check if valid bool
