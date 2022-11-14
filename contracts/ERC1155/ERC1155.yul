@@ -391,10 +391,7 @@ object "Token"
 
         // check if reciever is a contract
         // revert if not implementing receiving interface
-        if isContract(to)
-        {
-          _doSafeTransferAcceptanceCheck(caller(), from, to, id, amount, bytesDataSizeMemPos)
-        }
+        _doSafeTransferAcceptanceCheck(caller(), from, to, id, amount, bytesDataSizeMemPos)
       }
 
       function _safeBatchTransferFrom(from, to, idsLengthMemPos, amountsLengthMemPos, bytesDataSizeMemPos)
@@ -431,186 +428,190 @@ object "Token"
         TransferBatch(caller(), from, to, idsLengthMemPos, amountsLengthMemPos, commonArrLength)
 
         // revert if not implementing receiving interface
-        if isContract(to)
-        {
-          _doSafeBatchTransferAcceptanceCheck(caller(), from, to, idsLengthMemPos, amountsLengthMemPos, bytesDataSizeMemPos)
-        }
+        _doSafeBatchTransferAcceptanceCheck(caller(), from, to, idsLengthMemPos, amountsLengthMemPos, bytesDataSizeMemPos)
       }
 
       function _doSafeTransferAcceptanceCheck(operator, from, to, id, amount, bytesDataSizeMemPos)
       {
-        // should return bytes4(keccak256("onERC1155Received(address,address,uint256,uint256,bytes)"))
-        // 0xf23a6e61 when calling onERC1155Received (it's own function selector)
-        // EVM will interpret this with leading 0's so we must shift for selector notation
-        let onERC1155ReceivedSelector := shl(0xE0, 0xf23a6e61) // 224 bits shift left
+        if isContract(to)
+        {
+            // should return bytes4(keccak256("onERC1155Received(address,address,uint256,uint256,bytes)"))
+            // 0xf23a6e61 when calling onERC1155Received (it's own function selector)
+            // EVM will interpret this with leading 0's so we must shift for selector notation
+            let onERC1155ReceivedSelector := shl(0xE0, 0xf23a6e61) // 224 bits shift left
 
-        // do a call onto the account and compare returned data
-        /*  gas: amount of gas to send to the sub context to execute. 
-            The gas that is not used by the sub context is returned to this one.
-            address: the account which context to execute.
-            value: value in wei to send to the account.
-            argsOffset: byte offset in the memory in bytes, the calldata of the sub context.
-            argsSize: byte size to copy (size of the calldata).
-            retOffset: byte offset in the memory in bytes, where to store the return data of the sub context.
-            retSize: byte size to copy (size of the return data).
-        */
+            // do a call onto the account and compare returned data
+            /*  gas: amount of gas to send to the sub context to execute. 
+                The gas that is not used by the sub context is returned to this one.
+                address: the account which context to execute.
+                value: value in wei to send to the account.
+                argsOffset: byte offset in the memory in bytes, the calldata of the sub context.
+                argsSize: byte size to copy (size of the calldata).
+                retOffset: byte offset in the memory in bytes, where to store the return data of the sub context.
+                retSize: byte size to copy (size of the return data).
+            */
 
-        /********* construct calldata arguments *********/
-        //construct calldata in memory end-to-end as calling functions calldata
-        let cdStart := getFMP()
+            /********* construct calldata arguments *********/
+            //construct calldata in memory end-to-end as calling functions calldata
+            let cdStart := getFMP()
 
-        // function selector 
-        mstore(cdStart, onERC1155ReceivedSelector)
-        incrementFMP(0x04) // -> 4 bytes (calldata size)
+            // function selector 
+            mstore(cdStart, onERC1155ReceivedSelector)
+            incrementFMP(0x04) // -> 4 bytes (calldata size)
 
-        // operator
-        mstore(getFMP(), caller()) // overwrites the last 28 bytes of prev
-        incrementFMP(0x20) // -> 36 bytes (calldata size) 
+            // operator
+            mstore(getFMP(), caller()) // overwrites the last 28 bytes of prev
+            incrementFMP(0x20) // -> 36 bytes (calldata size) 
 
-        // from
-        mstore(getFMP(), from)
-        incrementFMP(0x20) // -> 68 bytes (calldata size) 
+            // from
+            mstore(getFMP(), from)
+            incrementFMP(0x20) // -> 68 bytes (calldata size) 
 
-        // id
-        mstore(getFMP(), id)
-        incrementFMP(0x20) // -> 100 bytes (calldata size) 
+            // id
+            mstore(getFMP(), id)
+            incrementFMP(0x20) // -> 100 bytes (calldata size) 
 
-        // amount
-        mstore(getFMP(), amount)
-        incrementFMP(0x20) // -> 132 bytes (calldata size)
+            // amount
+            mstore(getFMP(), amount)
+            incrementFMP(0x20) // -> 132 bytes (calldata size)
 
-        // total amount of bytes to write
-        let bytesSize := mload(bytesDataSizeMemPos)
+            // total amount of bytes to write
+            let bytesSize := mload(bytesDataSizeMemPos)
 
-        // bytes size ptr (ptr pos to byte size in calldata) 
-        // (disregarding the initial 4 bytes of function selector)
-        mstore(getFMP(), 0xa0) // points to immediately proceeding mem slot
-        incrementFMP(0x20) // -> 164 bytes (calldata size)
+            // bytes size ptr (ptr pos to byte size in calldata) 
+            // (disregarding the initial 4 bytes of function selector)
+            mstore(getFMP(), 0xa0) // points to immediately proceeding mem slot
+            incrementFMP(0x20) // -> 164 bytes (calldata size)
 
-        // bytes size data
-        mstore(getFMP(), bytesSize)
-        incrementFMP(0x20) // -> 196 bytes (calldata size)  
+            // bytes size data
+            mstore(getFMP(), bytesSize)
+            incrementFMP(0x20) // -> 196 bytes (calldata size)  
 
-        // pack bytes data end-to-end 
-        // (will be variable memory slots taken depending on the bytes size)
-        packBytesMem(bytesDataSizeMemPos, bytesSize)
+            // pack bytes data end-to-end 
+            // (will be variable memory slots taken depending on the bytes size)
+            packBytesMem(bytesDataSizeMemPos, bytesSize)
 
-        // 196 bytes + size of byte data 
-        let cdSize := add(0xc4, bytesSize)
-        /********* construct calldata arguments *********/
+            // 196 bytes + size of byte data 
+            let cdSize := add(0xc4, bytesSize)
+            /********* construct calldata arguments *********/
 
-        //safeContractCall(cdStart, cdSize)
-        // execute call and require successful return from exeuction context
-        let success := call(gas(), to, 0, cdStart, cdSize, 0x00, 0x20)
-        require(success)
+            //safeContractCall(cdStart, cdSize)
+            // execute call and require successful return from exeuction context
+            let success := call(gas(), to, 0, cdStart, cdSize, 0x00, 0x20)
+            require(success)
 
-        // ensure valid selector is returned
-        require(eq(mload(0x00), onERC1155ReceivedSelector))
+            // ensure valid selector is returned
+            require(eq(mload(0x00), onERC1155ReceivedSelector))
+        }
+
       }
 
       function _doSafeBatchTransferAcceptanceCheck(operator, from, to, idsLengthMemPos, amountsLengthMemPos, bytesDataSizeMemPos)
       {
-        // should return bytes4(keccak256("onERC1155BatchReceived(address,address,uint256[],uint256[],bytes)"))
-        // 0xbc197c81 when calling onERC1155Received (it's own function selector)
-        // EVM will interpret this with leading 0's so we must shift for selector notation
-        let onERC1155BatchReceivedSelector := shl(0xE0, 0xbc197c81) // 224 bits shift left
+        if isContract(to)
+        {
+            // should return bytes4(keccak256("onERC1155BatchReceived(address,address,uint256[],uint256[],bytes)"))
+            // 0xbc197c81 when calling onERC1155Received (it's own function selector)
+            // EVM will interpret this with leading 0's so we must shift for selector notation
+            let onERC1155BatchReceivedSelector := shl(0xE0, 0xbc197c81) // 224 bits shift left
 
-        // do a call onto the account and compare returned data
-        /* gas: amount of gas to send to the sub context to execute. 
-            The gas that is not used by the sub context is returned to this one.
-            address: the account which context to execute.
-            value: value in wei to send to the account.
-            argsOffset: byte offset in the memory in bytes, the calldata of the sub context.
-            argsSize: byte size to copy (size of the calldata).
-            retOffset: byte offset in the memory in bytes, where to store the return data of the sub context.
-            retSize: byte size to copy (size of the return data).
-        */
+            // do a call onto the account and compare returned data
+            /* gas: amount of gas to send to the sub context to execute. 
+                The gas that is not used by the sub context is returned to this one.
+                address: the account which context to execute.
+                value: value in wei to send to the account.
+                argsOffset: byte offset in the memory in bytes, the calldata of the sub context.
+                argsSize: byte size to copy (size of the calldata).
+                retOffset: byte offset in the memory in bytes, where to store the return data of the sub context.
+                retSize: byte size to copy (size of the return data).
+            */
 
-        /********* construct calldata arguments *********/
-        /* since we return multiple dynamic size elements
-            the memory layout will look like so: 
-            operator, from, to, ids length ptr, amounts length ptr, bytes length ptr,
-            amounts length, amounts data, ids length, ids data, bytes size, bytes data                        
-        */
-        let cdStart := getFMP()
+            /********* construct calldata arguments *********/
+            /* since we return multiple dynamic size elements
+                the memory layout will look like so: 
+                operator, from, to, ids length ptr, amounts length ptr, bytes length ptr,
+                amounts length, amounts data, ids length, ids data, bytes size, bytes data                        
+            */
+            let cdStart := getFMP()
 
-        // function selector 
-        mstore(cdStart, onERC1155BatchReceivedSelector)
-        incrementFMP(0x04) // -> 4 bytes (calldata size)
+            // function selector 
+            mstore(cdStart, onERC1155BatchReceivedSelector)
+            incrementFMP(0x04) // -> 4 bytes (calldata size)
 
-        // operator
-        mstore(getFMP(), caller()) // overwrites the last 28 bytes of prev
-        incrementFMP(0x20) // -> 36 bytes (calldata size) 
+            // operator
+            mstore(getFMP(), caller()) // overwrites the last 28 bytes of prev
+            incrementFMP(0x20) // -> 36 bytes (calldata size) 
 
-        // from
-        mstore(getFMP(), from)
-        incrementFMP(0x20) // -> 68 bytes (calldata size) 
+            // from
+            mstore(getFMP(), from)
+            incrementFMP(0x20) // -> 68 bytes (calldata size) 
 
-        /* dynamic elements pointers */
-        // load array length
-        let arrayLen := mload(idsLengthMemPos)
-        let arrFullSize := add(mul(arrayLen, 0x20), 0x20) // data size including length
+            /* dynamic elements pointers */
+            // load array length
+            let arrayLen := mload(idsLengthMemPos)
+            let arrFullSize := add(mul(arrayLen, 0x20), 0x20) // data size including length
 
-        // ids array length ptr (ptr pos to length in calldata) 
-        // (disregarding the initial 4 bytes of function selector)
-        mstore(getFMP(), 0xa0)
-        incrementFMP(0x20) // -> 164 bytes (calldata size)
+            // ids array length ptr (ptr pos to length in calldata) 
+            // (disregarding the initial 4 bytes of function selector)
+            mstore(getFMP(), 0xa0)
+            incrementFMP(0x20) // -> 164 bytes (calldata size)
 
-        // amounts array length ptr = 0xa0 + full length of array (including length)
-        let amountsPtr := add(0xa0, arrFullSize)
-        mstore(getFMP(), amountsPtr)
-        incrementFMP(0x20) // -> 196 bytes (calldata size)
+            // amounts array length ptr = 0xa0 + full length of array (including length)
+            let amountsPtr := add(0xa0, arrFullSize)
+            mstore(getFMP(), amountsPtr)
+            incrementFMP(0x20) // -> 196 bytes (calldata size)
 
-        // bytes size ptr = amountsPtr + full length of array (including length)
-        let bytesPtr := add(amountsPtr, arrFullSize)
-        mstore(getFMP(), bytesPtr)
-        incrementFMP(0x20)
-        /* dynamic elements pointers */
+            // bytes size ptr = amountsPtr + full length of array (including length)
+            let bytesPtr := add(amountsPtr, arrFullSize)
+            mstore(getFMP(), bytesPtr)
+            incrementFMP(0x20)
+            /* dynamic elements pointers */
 
-        /* dynamic elements size/length */
+            /* dynamic elements size/length */
 
-        /* ID */
-        // store ids length at ptr pos (disregarding length slot)
-        mstore(getFMP(), arrayLen)
-        incrementFMP(0x20)
+            /* ID */
+            // store ids length at ptr pos (disregarding length slot)
+            mstore(getFMP(), arrayLen)
+            incrementFMP(0x20)
 
-        // id data
-        // copys back array data from memory end-to-end
-        packArrayMem(arrayLen, idsLengthMemPos)
-        /* ID */
+            // id data
+            // copys back array data from memory end-to-end
+            packArrayMem(arrayLen, idsLengthMemPos)
+            /* ID */
 
-        /* AMOUNT */
-        // store amount length at ptr pos (disregarding length slot)
-        mstore(getFMP(), arrayLen)
-        incrementFMP(0x20)
+            /* AMOUNT */
+            // store amount length at ptr pos (disregarding length slot)
+            mstore(getFMP(), arrayLen)
+            incrementFMP(0x20)
 
-        // amount data
-        packArrayMem(arrayLen, amountsLengthMemPos)
-        /* AMOUNT */
+            // amount data
+            packArrayMem(arrayLen, amountsLengthMemPos)
+            /* AMOUNT */
 
-        /* BYTES */
-        let bytesSize := mload(bytesDataSizeMemPos)
-        mstore(getFMP(), bytesSize)
-        incrementFMP(0x20)
+            /* BYTES */
+            let bytesSize := mload(bytesDataSizeMemPos)
+            mstore(getFMP(), bytesSize)
+            incrementFMP(0x20)
 
-        // pack bytes data end-to-end
-        packBytesMem(bytesDataSizeMemPos, bytesSize)
-        /* BYTES */
-        /* dynamic elements size/length */
-        /********* construct calldata arguments *********/
+            // pack bytes data end-to-end
+            packBytesMem(bytesDataSizeMemPos, bytesSize)
+            /* BYTES */
+            /* dynamic elements size/length */
+            /********* construct calldata arguments *********/
 
-        // all memory operations incremented the FMP accordingly
-        // we can use the current FMP position to calculate CD size
-        let cdSize := sub(getFMP(), cdStart)
+            // all memory operations incremented the FMP accordingly
+            // we can use the current FMP position to calculate CD size
+            let cdSize := sub(getFMP(), cdStart)
 
-        // execute call and require successful return from exeuction context
-        // stores return data in scratch space
-        let success := call(gas(), to, 0, cdStart, cdSize, 0x00, 0x20)
-        require(success)
+            // execute call and require successful return from exeuction context
+            // stores return data in scratch space
+            let success := call(gas(), to, 0, cdStart, cdSize, 0x00, 0x20)
+            require(success)
 
-        // ensure valid selector is returned
-        // checks scratch space
-        require(eq(mload(0x00), onERC1155BatchReceivedSelector))
+            // ensure valid selector is returned
+            // checks scratch space
+            require(eq(mload(0x00), onERC1155BatchReceivedSelector))
+            }
       }
 
       /* ---------- calldata decoding functions ----------- */
