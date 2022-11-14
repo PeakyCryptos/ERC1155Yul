@@ -114,61 +114,61 @@ object "Token"
       }
 
       /* -------- storage layout ---------- */
-      function ownerPos() - > p { p: = 0 }
+      function ownerPos() -> p { p := 0 }
 
-      function minMintValPos() - > p { p: = 1 }
+      function minMintValPos() -> p { p := 1 }
 
-      function minMintAmtPos() - > p { p: = 2 }
+      function minMintAmtPos() -> p { p := 2 }
 
       // balances[tokenID][account]
-      function acctBalancesMappingPos() - > p { p: = 3 }
+      function acctBalancesMappingPos() -> p { p := 3 }
 
       // operatorApprovals[account][operator] 
-      function operatorApprovalsMappingPos() - > p { p: = 4 }
+      function operatorApprovalsMappingPos() -> p { p := 4 }
 
       // hardcoded uri data position
-      function uriPos() - > sizePos
+      function uriPos() -> sizePos
       {
         // no need to return the data slot locations
         // as the position is sequential (length + 1) etc
-        sizePos: = 5
+        sizePos := 5
       }
 
       // Mapping from token ID to account balances
       // mapping(uint256 => mapping(address => uint256)) private _balances;
       // keccak256(abi.encode(address, keccak256(abi.encode(ID_uint, uint256(IDslotHash)))));
-      function balancesStorageOffset(account, id) - > offset
+      function balancesStorageOffset(account, id) -> offset
       {
         // no need to keep track of FMP as we only use scratch space
 
         // nested mapping
         mstore(0x00, id) // 0x00 -> 0x20
         mstore(0x20, acctBalancesMappingPos()) // 0x20 -> 0x40  
-        let nestedMappingHash: = keccak256(0x00, 0x40)
+        let nestedMappingHash := keccak256(0x00, 0x40)
 
         // outter mapping
         mstore(0x00, account) // overwrite 0x00 -> 0x20
         mstore(0x20, nestedMappingHash) // overwrite 0x20 ->0x40
 
         // location balances[tokenID][account] 
-        offset: = keccak256(0x00, 0x40)
+        offset := keccak256(0x00, 0x40)
       }
 
-      function operatorApprovalsStorageOffset(account, operator) - > offset
+      function operatorApprovalsStorageOffset(account, operator) -> offset
       {
         // no need to keep track of FMP as we only use scratch space
 
         // nested mapping
         mstore(0x00, account) // 0x00 -> 0x20
         mstore(0x20, operatorApprovalsMappingPos()) // 0x20 -> 0x40  
-        let nestedMappingHash: = keccak256(0x00, 0x40)
+        let nestedMappingHash := keccak256(0x00, 0x40)
 
         // outter mapping
         mstore(0x00, operator) // overwrite 0x00 -> 0x20
         mstore(0x20, nestedMappingHash) // overwrite 0x20 -> 0x40
 
         // location operatorApprovals[account][operator]  
-        offset: = keccak256(0x00, 0x40)
+        offset := keccak256(0x00, 0x40)
       }
 
       /* -------- main ERC1155 functions ---------- */
@@ -195,16 +195,16 @@ object "Token"
         revertIfZeroAddress(to)
 
         // make sure arrays are the same length
-        let commonArrLength: = compareArrayLengths(idsLengthMemPos, amountsLengthMemPos)
+        let commonArrLength := compareArrayLengths(idsLengthMemPos, amountsLengthMemPos)
 
         // total tokens being attempted to mint in this function
-        let totalAmount: = 0
+        let totalAmount := 0
 
         // loop as many times as the common array length
-        for { let i: = 0 } lt(i, commonArrLength) { i: = add(i, 1) }
+        for { let i := 0 } lt(i, commonArrLength) { i := add(i, 1) }
         {
           // corresponding element of array for each iteration of this loop
-          let id, amount: = getEqualArrElement(i, idsLengthMemPos, amountsLengthMemPos)
+          let id, amount := getEqualArrElement(i, idsLengthMemPos, amountsLengthMemPos)
 
           // check for this token if you are minting over allowed limit
           checkMaxMint(amount)
@@ -213,7 +213,7 @@ object "Token"
           addToBalance(to, id, amount)
 
           // increment record keeper
-          totalAmount: = add(totalAmount, amount)
+          totalAmount := add(totalAmount, amount)
         }
 
         // check if callvalue is sufficient for total tokens minted
@@ -242,13 +242,13 @@ object "Token"
       {
         // compare array lengths
         // reverts if not equal sized elements
-        let commonArrLength: = compareArrayLengths(idsLengthMemPos, amountsLengthMemPos)
+        let commonArrLength := compareArrayLengths(idsLengthMemPos, amountsLengthMemPos)
 
         // loop as many times as the common array length
-        for { let i: = 0 } lt(i, commonArrLength) { i: = add(i, 1) }
+        for { let i := 0 } lt(i, commonArrLength) { i := add(i, 1) }
         {
           // corresponding element of array for each iteration of this loop
-          let id, amount: = getEqualArrElement(i, idsLengthMemPos, amountsLengthMemPos)
+          let id, amount := getEqualArrElement(i, idsLengthMemPos, amountsLengthMemPos)
 
           // _balances[id][from] = fromBalance - amount;
           deductFromBalance(from, id, amount)
@@ -260,14 +260,14 @@ object "Token"
       function uri(id)
       {
         // load size position
-        let sizePos: = uriPos()
+        let sizePos := uriPos()
 
         // load data from storage positions
-        let size: = sload(sizePos)
+        let size := sload(sizePos)
 
         // return the string in proper format for return
         // sizePtr -> size -> data laid out end-to-end
-        let startPos: = getFMP()
+        let startPos := getFMP()
         mstore(startPos, 0x20)
         incrementFMP(0x20)
 
@@ -278,11 +278,11 @@ object "Token"
         // store the 2 hardcoded data slots
         // done for extendability purposes incase hardcoded URI string
         // ...could be more than 2 storage slots in future
-        for { let i: = 1 } lte(i, 2) { i: = add(i, 1) }
+        for { let i := 1 } lte(i, 2) { i := add(i, 1) }
         {
           // i.e first loop  i = 1
           // we will load length pos + 1 and so on
-          let data: = sload(add(sizePos, i))
+          let data := sload(add(sizePos, i))
 
           // store the data end-to-end
           mstore(getFMP(), data)
@@ -292,13 +292,13 @@ object "Token"
         return (startPos, getFMP())
       }
 
-      function balanceOf(account, id) - > bal
+      function balanceOf(account, id) -> bal
       {
         //make sure not 0 address
         revertIfZeroAddress(account)
 
         // return balance[id][account]               
-        bal: = sload(balancesStorageOffset(account, id))
+        bal := sload(balancesStorageOffset(account, id))
       }
 
       function balanceOfBatch(accountsLengthMemPos, idsLengthMemPos)
@@ -313,13 +313,13 @@ object "Token"
 
         // check if arrays are same length, else revert
         // if same length store as the new balance array length
-        let balancesLength: = compareArrayLengths(accountsLengthMemPos, idsLengthMemPos)
+        let balancesLength := compareArrayLengths(accountsLengthMemPos, idsLengthMemPos)
 
         // initalize the balances array in memory at the free memory pointer
         // when returning an array we pass a ptr location to be read from 
         // which points to where the length position is stored in (in return data)
         // we do this so we can return end-to-end: PtrReturnArrLength->arrLength->Data packed next to each other
-        let returnLengthPtrPos: = getFMP()
+        let returnLengthPtrPos := getFMP()
         mstore(returnLengthPtrPos, 0x20) // length of arr is pos 0x20 in return data for this func
         incrementFMP(0x20)
 
@@ -329,16 +329,16 @@ object "Token"
 
         // loop as many times as the balanceLength array should be
         // balances[index] = balanceOf[address][id]
-        for { let i: = 0 } lt(i, balancesLength) { i: = add(i, 1) }
+        for { let i := 0 } lt(i, balancesLength) { i := add(i, 1) }
         {
           // where to write the current index of balances
-          let toWritePos: = getFMP()
+          let toWritePos := getFMP()
 
           // get array data for corresponding loop/index
-          let account, id: = getEqualArrElement(i, accountsLengthMemPos, idsLengthMemPos)
+          let account, id := getEqualArrElement(i, accountsLengthMemPos, idsLengthMemPos)
 
           // retrieve the balance
-          let bal: = balanceOf(account, id)
+          let bal := balanceOf(account, id)
 
           // store balance for this index in specified position
           mstore(toWritePos, bal)
@@ -352,9 +352,9 @@ object "Token"
       }
 
       // returns a bool, operatorApprovals[account][operator]
-      function _operatorApprovalsAccess(account, operator) - > approvalBool
+      function _operatorApprovalsAccess(account, operator) -> approvalBool
       {
-        approvalBool: = sload(operatorApprovalsStorageOffset(account, operator))
+        approvalBool := sload(operatorApprovalsStorageOffset(account, operator))
       }
 
       // sets _operatorApprovals[account][operator] to a bool
@@ -408,16 +408,16 @@ object "Token"
 
         // stores length of both arrays if they are equal sized
         // revert is arrays not the same length
-        let commonArrLength: = compareArrayLengths(idsLengthMemPos, amountsLengthMemPos)
+        let commonArrLength := compareArrayLengths(idsLengthMemPos, amountsLengthMemPos)
 
         // loop as many times as the commonArrLength array should be
-        for { let i: = 0 } lt(i, commonArrLength) { i: = add(i, 1) }
+        for { let i := 0 } lt(i, commonArrLength) { i := add(i, 1) }
         {
           // where to write the current index of balances
-          let toWritePos: = getFMP()
+          let toWritePos := getFMP()
 
           // get array data for corresponding loop/index
-          let id, amount: = getEqualArrElement(i, idsLengthMemPos, amountsLengthMemPos)
+          let id, amount := getEqualArrElement(i, idsLengthMemPos, amountsLengthMemPos)
 
           // _balances[id][to] += amount;
           addToBalance(to, id, amount)
@@ -442,7 +442,7 @@ object "Token"
         // should return bytes4(keccak256("onERC1155Received(address,address,uint256,uint256,bytes)"))
         // 0xf23a6e61 when calling onERC1155Received (it's own function selector)
         // EVM will interpret this with leading 0's so we must shift for selector notation
-        let onERC1155ReceivedSelector: = shl(0xE0, 0xf23a6e61) // 224 bits shift left
+        let onERC1155ReceivedSelector := shl(0xE0, 0xf23a6e61) // 224 bits shift left
 
         // do a call onto the account and compare returned data
         /*  gas: amount of gas to send to the sub context to execute. 
@@ -457,7 +457,7 @@ object "Token"
 
         /********* construct calldata arguments *********/
         //construct calldata in memory end-to-end as calling functions calldata
-        let cdStart: = getFMP()
+        let cdStart := getFMP()
 
         // function selector 
         mstore(cdStart, onERC1155ReceivedSelector)
@@ -480,7 +480,7 @@ object "Token"
         incrementFMP(0x20) // -> 132 bytes (calldata size)
 
         // total amount of bytes to write
-        let bytesSize: = mload(bytesDataSizeMemPos)
+        let bytesSize := mload(bytesDataSizeMemPos)
 
         // bytes size ptr (ptr pos to byte size in calldata) 
         // (disregarding the initial 4 bytes of function selector)
@@ -496,12 +496,12 @@ object "Token"
         packBytesMem(bytesDataSizeMemPos, bytesSize)
 
         // 196 bytes + size of byte data 
-        let cdSize: = add(0xc4, bytesSize)
+        let cdSize := add(0xc4, bytesSize)
         /********* construct calldata arguments *********/
 
         //safeContractCall(cdStart, cdSize)
         // execute call and require successful return from exeuction context
-        let success: = call(gas(), to, 0, cdStart, cdSize, 0x00, 0x20)
+        let success := call(gas(), to, 0, cdStart, cdSize, 0x00, 0x20)
         require(success)
 
         // ensure valid selector is returned
@@ -513,7 +513,7 @@ object "Token"
         // should return bytes4(keccak256("onERC1155BatchReceived(address,address,uint256[],uint256[],bytes)"))
         // 0xbc197c81 when calling onERC1155Received (it's own function selector)
         // EVM will interpret this with leading 0's so we must shift for selector notation
-        let onERC1155BatchReceivedSelector: = shl(0xE0, 0xbc197c81) // 224 bits shift left
+        let onERC1155BatchReceivedSelector := shl(0xE0, 0xbc197c81) // 224 bits shift left
 
         // do a call onto the account and compare returned data
         /* gas: amount of gas to send to the sub context to execute. 
@@ -532,7 +532,7 @@ object "Token"
             operator, from, to, ids length ptr, amounts length ptr, bytes length ptr,
             amounts length, amounts data, ids length, ids data, bytes size, bytes data                        
         */
-        let cdStart: = getFMP()
+        let cdStart := getFMP()
 
         // function selector 
         mstore(cdStart, onERC1155BatchReceivedSelector)
@@ -548,8 +548,8 @@ object "Token"
 
         /* dynamic elements pointers */
         // load array length
-        let arrayLen: = mload(idsLengthMemPos)
-        let arrFullSize: = add(mul(arrayLen, 0x20), 0x20) // data size including length
+        let arrayLen := mload(idsLengthMemPos)
+        let arrFullSize := add(mul(arrayLen, 0x20), 0x20) // data size including length
 
         // ids array length ptr (ptr pos to length in calldata) 
         // (disregarding the initial 4 bytes of function selector)
@@ -557,12 +557,12 @@ object "Token"
         incrementFMP(0x20) // -> 164 bytes (calldata size)
 
         // amounts array length ptr = 0xa0 + full length of array (including length)
-        let amountsPtr: = add(0xa0, arrFullSize)
+        let amountsPtr := add(0xa0, arrFullSize)
         mstore(getFMP(), amountsPtr)
         incrementFMP(0x20) // -> 196 bytes (calldata size)
 
         // bytes size ptr = amountsPtr + full length of array (including length)
-        let bytesPtr: = add(amountsPtr, arrFullSize)
+        let bytesPtr := add(amountsPtr, arrFullSize)
         mstore(getFMP(), bytesPtr)
         incrementFMP(0x20)
         /* dynamic elements pointers */
@@ -589,7 +589,7 @@ object "Token"
         /* AMOUNT */
 
         /* BYTES */
-        let bytesSize: = mload(bytesDataSizeMemPos)
+        let bytesSize := mload(bytesDataSizeMemPos)
         mstore(getFMP(), bytesSize)
         incrementFMP(0x20)
 
@@ -601,11 +601,11 @@ object "Token"
 
         // all memory operations incremented the FMP accordingly
         // we can use the current FMP position to calculate CD size
-        let cdSize: = sub(getFMP(), cdStart)
+        let cdSize := sub(getFMP(), cdStart)
 
         // execute call and require successful return from exeuction context
         // stores return data in scratch space
-        let success: = call(gas(), to, 0, cdStart, cdSize, 0x00, 0x20)
+        let success := call(gas(), to, 0, cdStart, cdSize, 0x00, 0x20)
         require(success)
 
         // ensure valid selector is returned
@@ -614,15 +614,15 @@ object "Token"
       }
 
       /* ---------- calldata decoding functions ----------- */
-      function selector() - > s
+      function selector() -> s
       {
-        s: = div(calldataload(0), 0x100000000000000000000000000000000000000000000000000000000)
+        s := div(calldataload(0), 0x100000000000000000000000000000000000000000000000000000000)
       }
 
       // Checks if valid address passed in
-      function decodeAsAddress(offset) - > v
+      function decodeAsAddress(offset) -> v
       {
-        v: = decodeAsUint(offset)
+        v := decodeAsUint(offset)
         if iszero(iszero(and(v, not(0xffffffffffffffffffffffffffffffffffffffff))))
         {
           revert(0, 0)
@@ -630,21 +630,21 @@ object "Token"
       }
 
       // Checks if valid uint passed in
-      function decodeAsUint(offset) - > v
+      function decodeAsUint(offset) -> v
       {
-        let pos: = add(4, mul(offset, 0x20))
+        let pos := add(4, mul(offset, 0x20))
         if lt(calldatasize(), add(pos, 0x20))
         {
           revert(0, 0)
         }
 
-        v: = calldataload(pos)
+        v := calldataload(pos)
       }
 
       // Checks if valid bool passed in
-      function decodeAsBool(offset) - > data
+      function decodeAsBool(offset) -> data
       {
-        let pos: = add(4, mul(offset, 0x20))
+        let pos := add(4, mul(offset, 0x20))
         if lt(calldatasize(), add(pos, 0x20))
         {
           revert(0, 0)
@@ -652,7 +652,7 @@ object "Token"
 
         // load bool value (full 32 bytes)
         // also returned if function executes successfully
-        data: = calldataload(pos)
+        data := calldataload(pos)
 
         // check if bool (0 or 1)
         // if not reverts
@@ -660,7 +660,7 @@ object "Token"
       }
 
       // Checks if valid array passed in, and prepares data format for function
-      function decodeAsArray(offset) - > arrLengthMemPos
+      function decodeAsArray(offset) -> arrLengthMemPos
       {
         /* offset passed in is the location to start reading the following 32 bytes
            that holds the length of the array (how many increments of 0x20 to read from)
@@ -675,14 +675,14 @@ object "Token"
         */
 
         // calldata offset position
-        let arrOffsetPos: = add(4, mul(offset, 0x20))
+        let arrOffsetPos := add(4, mul(offset, 0x20))
 
         // read calldata to get where the arr length portion starts
         // add 4 as we must account for the function selector
-        let arrLengthPos: = add(calldataload(arrOffsetPos), 4)
+        let arrLengthPos := add(calldataload(arrOffsetPos), 4)
 
         // full array length data (including the length value as the first item)
-        let arrLengthData: = add(calldataload(arrLengthPos), 1)
+        let arrLengthData := add(calldataload(arrLengthPos), 1)
 
         // if array length is 0 revert
         if eq(arrLengthData, 1)
@@ -691,7 +691,7 @@ object "Token"
         }
 
         // full byte size of array including length portion
-        let fullArrDataSize: = mul(arrLengthData, 0x20)
+        let fullArrDataSize := mul(arrLengthData, 0x20)
 
         // ensure this is a valid array (length portion matches the remaining data portion)
         // the length * 0x20  (how many 32 bytes lengths it takes up)   
@@ -704,7 +704,7 @@ object "Token"
         // This is returned to the calling function at the end of function execution
         // holds in memory where to start copying the full array
         // first 32 bytes will hold the length porition of the array
-        arrLengthMemPos: = getFMP()
+        arrLengthMemPos := getFMP()
 
         // copy to memory (starting at where the free memory pointer is)
         // copies the full array including the length)
@@ -715,7 +715,7 @@ object "Token"
       }
 
       // Checks if valid bytes data passed in, and prepares data format for function
-      function decodeAsBytes(offset) - > bytesSizeMemPos
+      function decodeAsBytes(offset) -> bytesSizeMemPos
       {
         /* similar to how an array is decoded however the ptr points to calldata offeset
            where the size of the bytes data is stored. Unlike an array using the
@@ -723,14 +723,14 @@ object "Token"
         */
 
         // calldata offset position
-        let cdSizeOffsetPos: = add(4, mul(offset, 0x20))
+        let cdSizeOffsetPos := add(4, mul(offset, 0x20))
 
         // read calldata to get where the bytes size portion starts
         // add 4 as we must account for the function selector
-        let cdSizePos: = add(calldataload(cdSizeOffsetPos), 4)
+        let cdSizePos := add(calldataload(cdSizeOffsetPos), 4)
 
         // full byte size, including size data (preceding 32 bytes)  
-        let bytesSizeData: = add(calldataload(cdSizePos), 0x20)
+        let bytesSizeData := add(calldataload(cdSizePos), 0x20)
 
         // if there is no bytes size data then revert
         require(bytesSizeData)
@@ -745,7 +745,7 @@ object "Token"
         // This is returned to the calling function at the end of function execution
         // holds in memory where to start copying the bytes data
         // first 32 bytes will hold the length porition of the data
-        bytesSizeMemPos: = getFMP()
+        bytesSizeMemPos := getFMP()
 
         // copy to memory (starting at where the free memory pointer is)
         // copies the full byte size(including the length)
@@ -772,7 +772,7 @@ object "Token"
         // No need for FMP as we make use of scratch space
 
         // keccak256("TransferSingle(address,address,address,uint256,uint256)")
-        let signatureHash: = 0xc3d58168c5ae7397731d063d5bbf3d657854427343f4c083240f7aacaa2d0f62
+        let signatureHash := 0xc3d58168c5ae7397731d063d5bbf3d657854427343f4c083240f7aacaa2d0f62
 
         // non-indexed arguments must be stored in memory
         mstore(0x00, id)
@@ -788,7 +788,7 @@ object "Token"
            ...address indexed _to, uint256[] _ids, uint256[] _values) */
 
         // keccak256("TransferBatch(address,address,address,uint256[],uint256[])")
-        let signatureHash: = 0x4a39dc06d4c0dbc64b70af90fd698a233a518aa5d07e595d983b8c0526c8f7fb
+        let signatureHash := 0x4a39dc06d4c0dbc64b70af90fd698a233a518aa5d07e595d983b8c0526c8f7fb
 
         // non-indexed arguments must be stored in memory
         // dynamic arrays are stored with a pointer to the length within the log data
@@ -797,36 +797,36 @@ object "Token"
         // Layout: idLengthPtr, amountLengthPtr, idLength, idData, amountLength, amountData
 
         // fullArrSize = idsLength * 0x20 + 0x20(including length slot)
-        let fullArrSize: = add(mul(commonArrLength, 0x20), 0x20)
+        let fullArrSize := add(mul(commonArrLength, 0x20), 0x20)
 
         // at FMP store idsLengthPtr -> FMP + 0x40
         // start of where the new arrays end-to-end format will be copied to
-        let idsLengthPtrPos: = getFMP()
+        let idsLengthPtrPos := getFMP()
         // at FMP + 0x20 store AmountsLengthPtr -> idsLengthPtr + fullArrSize
-        let amountsLengthPtrPos: = add(idsLengthPtrPos, 0x20)
+        let amountsLengthPtrPos := add(idsLengthPtrPos, 0x20)
 
         // store their relative locations in the log data
         mstore(idsLengthPtrPos, 0x40) // FMP + 0x40
         mstore(amountsLengthPtrPos, add(0x40, fullArrSize)) // idsLengthPtr + fullArrSize
 
         // load the relative pos of log data in relation to memory
-        let idsLengthPos: = add(getFMP(), mload(idsLengthPtrPos))
-        let amountLengthPos: = add(getFMP(), mload(amountsLengthPtrPos))
+        let idsLengthPos := add(getFMP(), mload(idsLengthPtrPos))
+        let amountLengthPos := add(getFMP(), mload(amountsLengthPtrPos))
 
         // store the length in corresponding mem pos
         mstore(idsLengthPos, commonArrLength)
         mstore(amountLengthPos, commonArrLength)
 
         // for loop as many elements in common array and append to appropriate memory positions
-        for { let i: = 0 } lt(i, commonArrLength) { i: = add(i, 1) }
+        for { let i := 0 } lt(i, commonArrLength) { i := add(i, 1) }
         {
           // for each arr what pos to read the current index at
           // add 0x20 to account for the length slot
-          let shiftPos: = add(mul(i, 0x20), 0x20)
+          let shiftPos := add(mul(i, 0x20), 0x20)
 
           // get the account and id data values (from calldata decoded location in mem)
-          let id: = mload(add(idsLengthMemPos, shiftPos))
-          let amount: = mload(add(amountsLengthMemPos, shiftPos))
+          let id := mload(add(idsLengthMemPos, shiftPos))
+          let amount := mload(add(amountsLengthMemPos, shiftPos))
 
           // append to new mem position
           mstore(add(idsLengthPos, shiftPos), id)
@@ -834,7 +834,7 @@ object "Token"
         }
 
         // Update the FMP
-        let endMemPos: = add(mul(fullArrSize, 2), 0x40)
+        let endMemPos := add(mul(fullArrSize, 2), 0x40)
         // (2 full arrays(including length + the length ptr pos)
         incrementFMP(endMemPos)
 
@@ -848,7 +848,7 @@ object "Token"
            bool _approved) */
 
         // keccak256("ApprovalForAll(address,address,bool)")                
-        let signatureHash: = 0x17307eab39ab6107e8899845ad3d59bd9653f200f220920489ca2b5937696c31
+        let signatureHash := 0x17307eab39ab6107e8899845ad3d59bd9653f200f220920489ca2b5937696c31
 
         // bool is non-indexed argument, stored in memory
         mstore(0x00, approved) // 0x00 -> 0x20
@@ -857,28 +857,28 @@ object "Token"
       }
 
       /* -------- storage access helpers ---------- */
-      function ownerAddress() - > o
+      function ownerAddress() -> o
       {
-        o: = sload(ownerPos())
+        o := sload(ownerPos())
       }
 
       // function to return minMint value
-      function minMintVal() - > v
+      function minMintVal() -> v
       {
-        v: = sload(minMintValPos())
+        v := sload(minMintValPos())
       }
 
       // function to return minMint amount (total tokens per transaction)
-      function minMintAmt() - > v
+      function minMintAmt() -> v
       {
-        v: = sload(minMintAmtPos())
+        v := sload(minMintAmtPos())
       }
 
       // Add to tokenID balance per address
       function addToBalance(account, id, amount)
       {
         // location of balance[tokenID][account]  
-        let offset: = balancesStorageOffset(account, id)
+        let offset := balancesStorageOffset(account, id)
 
         // update balance at storage location
         sstore(offset, safeAdd(sload(offset), amount))
@@ -888,10 +888,10 @@ object "Token"
       function deductFromBalance(account, id, amount)
       {
         // location of balance[tokenID][account]
-        let offset: = balancesStorageOffset(account, id)
+        let offset := balancesStorageOffset(account, id)
 
         // check if amount to deduct isn't more than balance
-        let bal: = sload(offset)
+        let bal := sload(offset)
         require(lte(amount, bal))
 
         // update balance at storage location
@@ -900,22 +900,22 @@ object "Token"
 
       // for 2 arrays of equal size return same element 
       // i = element of array we want to access (arr[i])
-      function getEqualArrElement(i, firstArrMemPos, secondArrMemPos) - > firstData, secondData
+      function getEqualArrElement(i, firstArrMemPos, secondArrMemPos) -> firstData, secondData
       {
         // for each arr what pos to read the current index at
         // add 0x20 to account for the length slot
-        let shiftPos: = add(mul(i, 0x20), 0x20)
+        let shiftPos := add(mul(i, 0x20), 0x20)
 
         // get the account and id data values
-        firstData: = mload(add(firstArrMemPos, shiftPos))
-        secondData: = mload(add(secondArrMemPos, shiftPos))
+        firstData := mload(add(firstArrMemPos, shiftPos))
+        secondData := mload(add(secondArrMemPos, shiftPos))
       }
 
       /* ---------- memory functions ---------- */
       // get current free memory pointer location
-      function getFMP() - > fmp
+      function getFMP() -> fmp
       {
-        fmp: = mload(0x40)
+        fmp := mload(0x40)
       }
 
       // increment free memory pointer by specified amount
@@ -931,11 +931,11 @@ object "Token"
         // i.e if 64 bytes of data (0x40) then 0x40 / 0x20 = 2 loops/data
         // add 1 as i.e 0x02 / 0x20 = 0.0625
         // we still have a slot to copy here as default behavior drops after decimal point
-        let numLoops: = add(1, div(bytesSize, 0x20))
-        for { let i: = 1 } lte(i, numLoops) { i: = add(i, 1) }
+        let numLoops := add(1, div(bytesSize, 0x20))
+        for { let i := 1 } lte(i, numLoops) { i := add(i, 1) }
         {
-          let shiftPos: = mul(i, 0x20)
-          let data: = mload(add(bytesDataSizeMemPos, shiftPos))
+          let shiftPos := mul(i, 0x20)
+          let data := mload(add(bytesDataSizeMemPos, shiftPos))
           mstore(getFMP(), data)
           incrementFMP(0x20)
         }
@@ -944,14 +944,14 @@ object "Token"
       // copy array data from memory back into memory end-to-end (starting at FMP)
       function packArrayMem(length, lengthMemPos)
       {
-        for { let i: = 1 } lte(i, length) { i: = add(i, 1) }
+        for { let i := 1 } lte(i, length) { i := add(i, 1) }
         {
           // for each arr what pos to read the current index at
           // add 0x20 to account for the length slot
-          let shiftPos: = mul(i, 0x20)
+          let shiftPos := mul(i, 0x20)
 
           // get the account and id data values
-          let data: = mload(add(lengthMemPos, shiftPos))
+          let data := mload(add(lengthMemPos, shiftPos))
           mstore(getFMP(), data)
 
           incrementFMP(0x20)
@@ -960,21 +960,21 @@ object "Token"
 
       /* ---------- utility functions ---------- */
       // a <= b
-      function lte(a, b) - > r
+      function lte(a, b) -> r
       {
-        r: = iszero(gt(a, b))
+        r := iszero(gt(a, b))
       }
 
       // a >= b
-      function gte(a, b) - > r
+      function gte(a, b) -> r
       {
-        r: = iszero(lt(a, b))
+        r := iszero(lt(a, b))
       }
 
       // conduct addition without overflow possibility
-      function safeAdd(a, b) - > r
+      function safeAdd(a, b) -> r
       {
-        r: = add(a, b)
+        r := add(a, b)
         if or(lt(r, a), lt(r, b)) { revert(0, 0) }
       }
 
@@ -991,9 +991,9 @@ object "Token"
       }
 
       // return 0 address
-      function zeroAddress() - > addr
+      function zeroAddress() -> addr
       {
-        addr: = 0x0000000000000000000000000000000000000000000000000000000000000000
+        addr := 0x0000000000000000000000000000000000000000000000000000000000000000
       }
 
       // check if ether was sent
@@ -1046,11 +1046,11 @@ object "Token"
       }
 
       // check if 2 arrays are of the same length
-      function compareArrayLengths(arr1, arr2) - > data1
+      function compareArrayLengths(arr1, arr2) -> data1
       {
         //require(ids.length == amounts.length, "ERC1155: ids and amounts length mismatch
-        data1: = mload(arr1)
-        let data2: = mload(arr2)
+        data1 := mload(arr1)
+        let data2 := mload(arr2)
 
         require(eq(data1, data2))
 
@@ -1059,12 +1059,12 @@ object "Token"
       }
 
       // check if address passed in is a contract
-      function isContract(receiver) - > codeSize
+      function isContract(receiver) -> codeSize
       {
         // returns byte size of the contract code
         // if not a valid contract this will return 0
         // ...unless called via a contracts constructor
-        codeSize: = extcodesize(receiver)
+        codeSize := extcodesize(receiver)
       }
     }
   }
