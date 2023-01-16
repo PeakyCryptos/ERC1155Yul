@@ -18,7 +18,7 @@ object "Token"
     // e.g. https://token-cdn-domain/{id}.json
     sstore(5, 0x22) // size 34 bytes (0x22)
     sstore(6, 0x68747470733a2f2f746f6b656e2d63646e2d646f6d61696e2f7b69647d2e6a73) // 'https://token-cdn-domain/{id}.js'
-    sstore(7, 0x6f63) // 'on'
+    sstore(7, 0x6f6e000000000000000000000000000000000000000000000000000000000000) // 'on'
 
     // Deploy the contract
     datacopy(0, dataoffset("runtime"), datasize("runtime"))
@@ -99,7 +99,7 @@ object "Token"
         enforceNonPayable()
 
         // from(msg.sender), id, amount)
-        _burn(caller(), decodeAsAddress(0), decodeAsUint(1))
+        _burn(caller(), decodeAsUint(0), decodeAsUint(1))
       }
       case 0xe090fa3c /* "burnBatch(uint256[],uint256[],bytes)" */
       {
@@ -174,6 +174,9 @@ object "Token"
       /* -------- main ERC1155 functions ---------- */
       function _mint(to, id, amount, dataSizeMemPos)
       {
+        // require to is not the zero-address
+        revertIfZeroAddress(to)
+
         // check if callvalue = storage slot 1 data * amount
         // also ensure no token a higher number than what is in storage slot 2 is minted
         checkCallValue(amount)
@@ -278,7 +281,7 @@ object "Token"
         // store the 2 hardcoded data slots
         // done for extendability purposes incase hardcoded URI string
         // ...could be more than 2 storage slots in future
-        for { let i := 1 } lte(i, 2) { i := add(i, 1) }
+        for { let i := 1 } lt(i, 3) { i := add(i, 1) }
         {
           // i.e first loop  i = 1
           // we will load length pos + 1 and so on
@@ -994,7 +997,7 @@ object "Token"
       // return 0 address
       function zeroAddress() -> addr
       {
-        addr := 0x0000000000000000000000000000000000000000000000000000000000000000
+        addr := 0x0
       }
 
       // check if ether was sent
