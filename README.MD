@@ -1,5 +1,7 @@
 # ERC1155Yul
 
+[![Test](https://github.com/PeakyCryptos/ERC1155Yul/actions/workflows/ci.yml/badge.svg)](https://github.com/PeakyCryptos/ERC1155Yul/actions/workflows/ci.yml)
+
 An educational implementation of core ERC-1155 behavior written directly in
 Yul. The token runtime handles selector dispatch, ABI decoding, storage,
 events, balance accounting, approvals, transfers, receiver callbacks, minting,
@@ -113,6 +115,8 @@ test/ERC1155.test.js                    mint, burn, and metadata tests
 - Reverts generally do not include human-readable reason strings.
 - The committed bytecode and test harness target the historical toolchain in
   `package-lock.json`.
+- The npm packages are development/test dependencies for that historical
+  harness; this repository does not ship an npm production runtime.
 - The code has not received an external security audit.
 
 For production contracts, use a maintained and audited implementation such as
